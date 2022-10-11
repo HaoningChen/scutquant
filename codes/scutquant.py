@@ -100,7 +100,7 @@ def dropna(X, axis=0):
 
 
 def fillna(X, method='ffill'):
-    X = X.fillna(method=method).fillna(0)
+    X = X.fillna(method=method)
     return X
 
 
