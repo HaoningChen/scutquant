@@ -1,6 +1,6 @@
 这是一个使用scutquant对PTA期货数据进行因子构建、数据处理和自动建模的案例  
 
-构建好因子和label后，我们使用AutoProcessor如下工作：  
+构建好因子和label后，我们使用AutoProcessor完成以下工作：  
 
 数据清洗、拆分数据集、统计训练集中目标值为0的占比并决定是否降采样/升采样、label_norm和feature_norm、计算因子相关系数并决定是否正交化、计算因子和label的Mutual Information并去除score=0的因子  
 
