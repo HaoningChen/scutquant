@@ -2,6 +2,6 @@
 
 构建好因子和label后，我们使用AutoProcessor完成以下工作：  
 
-数据清洗、拆分数据集、统计训练集中目标值为0的占比并决定是否降采样/升采样、label_norm和feature_norm、计算因子相关系数并决定是否正交化、计算因子和label的Mutual Information并去除score=0的因子  
+填充/去除NaN、拆分数据集、统计训练集中目标值为0的占比并决定是否降采样/升采样、label_norm和feature_norm、计算因子相关系数并决定是否正交化、计算因子和label的Mutual Information并去除score=0的因子  
 
 然后，我们初始化一个hybrid类，并使用fit方法拟合模型，使用predict方法预测测试集的label，最后，我们计算预测值和实际值的pearson_correlation_coefficient作为评估模型的指标（虽然更多的时候用IC，但证据表明pcc与IC均值和收益率都呈正相关），并使用dump方法保存模型
