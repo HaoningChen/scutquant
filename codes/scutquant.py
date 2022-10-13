@@ -298,11 +298,16 @@ def AutoLrg(x, y, method='ols', alphas=None, logspace_params=None, cv=10, max_it
 
 
 class hybrid:
-    def __init__(self, lin_model=None, xgb_model=None, task='reg', lrg_method='ols', xgb_params=None,
+    def __init__(self, lin_model=None, xgb_model=None, task='reg', lrg_method='ols', alphas=None, logspace_params=None, 
+                 cv=10, max_iter=1000, xgb_params=None,
                  weight=None):
         super(hybrid, self).__init__()
         self.task = task
         self.lrg_method = lrg_method
+        self.alphas = alphas
+        self.logspace_params = logspace_params
+        self.cv = cv
+        self.max_iter = max_iter
         self.xgb_params = xgb_params
         self.weight = weight
         self.lin_model = lin_model
@@ -334,14 +339,14 @@ class hybrid:
                                        reg_alpha=l1, reg_lambda=l2, max_depth=max_depth)
             self.xgb_model = xgb.fit(x_train, y_train, eval_set=[(x_valid, y_valid)],
                                      early_stopping_rounds=early_stopping_rounds)
-            self.lin_model = AutoLrg(x_train, y_train, method=self.lrg_method)
         else:
             xgb = xgboost.XGBClassifier(n_estimators=est, eta=eta,
                                         colsample_bytree=colsamp, subsample=subsamp,
                                         reg_alpha=l1, reg_lambda=l2, max_depth=max_depth)
             self.xgb_model = xgb.fit(x_train, y_train, eval_set=[(x_valid, y_valid)],
                                      early_stopping_rounds=early_stopping_rounds)
-            self.lin_model = AutoLrg(x_train, y_train, method=self.lrg_method)
+        self.lin_model = AutoLrg(x_train, y_train, method=self.lrg_method, alphas=self.alphas,
+                                 logspace_params=self.logspace_params, cv=self.cv, max_iter=self.max_iter)
 
     def predict(self, x_test):
         if self.weight is None:
