@@ -118,6 +118,12 @@ def fillna(X, method='ffill'):
     return X
 
 
+def process_inf(X):
+    for col in X.columns:
+        X[col] = X[col].replace([np.inf, -np.inf], X[col][~np.isinf(X[col])].mean())
+    return X
+
+
 def clean(X, axis=0):
     X = fillna(X)
     X = dropna(X, axis)
