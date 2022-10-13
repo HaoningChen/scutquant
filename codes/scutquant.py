@@ -269,9 +269,10 @@ def AutoProcessor(X, y, test_size=0.2, norm='z', label_norm=True, drop_useless_f
 ####################################################
 # 自动建模（线性回归模型）
 ####################################################
-def AutoLrg(x, y, method='ols', logspace_params=None, cv=10, max_iter=1000):
-    if logspace_params is None:
-        logspace_params = [-5, 2, 200]
+def AutoLrg(x, y, method='ols', alphas=None, logspace_params=None, cv=10, max_iter=1000):
+    if alphas is None:
+        if logspace_params is None:
+            logspace_params = [-5, 2, 200]
     from sklearn import linear_model
     model = None
     print(method + ' method will be used')
@@ -279,14 +280,14 @@ def AutoLrg(x, y, method='ols', logspace_params=None, cv=10, max_iter=1000):
         lrg = linear_model.LinearRegression()
         model = lrg.fit(x, y)
     elif method == 'ridge':
-        Lamdas = np.logspace(logspace_params[0], logspace_params[1], logspace_params[2])
-        ridge_cv = linear_model.RidgeCV(alphas=Lamdas, scoring='neg_mean_squared_error', cv=cv)
+        alphas = np.logspace(logspace_params[0], logspace_params[1], logspace_params[2])
+        ridge_cv = linear_model.RidgeCV(alphas=alphas, scoring='neg_mean_squared_error', cv=cv)
         ridge_cv.fit(x, y)
         ridge = linear_model.Ridge(alpha=ridge_cv.alpha_, max_iter=max_iter)
         model = ridge.fit(x, y)
     elif method == 'lasso':
-        Lamdas = np.logspace(logspace_params[0], logspace_params[1], logspace_params[2])
-        ridge_cv = linear_model.LassoCV(alphas=Lamdas, cv=cv)
+        alphas = np.logspace(logspace_params[0], logspace_params[1], logspace_params[2])
+        ridge_cv = linear_model.LassoCV(alphas=alphas, cv=cv)
         ridge_cv.fit(x, y)
         ridge = linear_model.Lasso(alpha=ridge_cv.alpha_, max_iter=max_iter)
         model = ridge.fit(x, y)
