@@ -5,11 +5,11 @@
 
 数据清洗:  
 
-  计算缺失值百分比、处理缺失值、计算0或某个值的占比、降采样和升采样（基于bootstrap））;  
+  计算缺失值百分比、处理缺失值、计算0或某个值的占比、降采样和升采样（基于bootstrap）;  
   
 特征工程:  
 
-  三种标准化方式、计算多重共线性、PCA和对称正交、计算feature和label的Mutual Information、画出数据分布）、拆分数据集（按顺序拆分、随机拆分（train_test_split二次封装）
+  三种标准化方式、计算多重共线性、PCA和对称正交、计算feature和label的Mutual Information、画出数据分布、拆分数据集（按顺序拆分、随机拆分（train_test_split二次封装）
   和GroupKFold（尚未实现））
   
   
