@@ -408,3 +408,22 @@ def pearson_corr(x, y):
     cov_xy = cov(x, y)
     cor = cov_xy / (x_std * y_std)
     return cor
+
+def ic_ana(pred, y, freq=1):
+    from scipy import stats
+    ic = []
+    rank_ic = []
+    for i in range(0, len(y), freq):
+        sample_pred = pred[i:i + freq]
+        sample_y = y[i:i + freq]
+        ic.append(pearson_corr(sample_pred, sample_y))
+        rank_ic.append(stats.spearmanr(sample_pred, sample_y)[0])
+    ic = pd.Series(ic)
+    rank_ic = pd.Series(rank_ic)
+    plt.plot(ic, label='ic', marker='o')
+    plt.plot(rank_ic, label='rank_ic', marker='o')
+    plt.title('IC Series')
+    plt.legend()
+    plt.show()
+    IC, ICIR, Rank_IC, Rank_ICIR = ic.mean(), ic.mean() / ic.std(), rank_ic.mean(), rank_ic.mean() / rank_ic.std()
+    return IC, ICIR, Rank_IC, Rank_ICIR
