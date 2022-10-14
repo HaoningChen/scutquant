@@ -10,10 +10,10 @@
 特征工程:  
 
   三种标准化方式、计算多重共线性、PCA和对称正交、计算feature和label的Mutual Information、画出数据分布、拆分数据集（按顺序拆分、随机拆分（train_test_split二次封装）
-  和GroupKFold（尚未实现））
+  和GroupKFold）
   
   
-还有一个集成了上述功能的AutoProcessor，新手可以调用它一键处理数据；以及自动线性回归（回归任务包括ols、ridge和lasso回归， 分类任务包括逻辑回归）；还有在首届厚方杯斩获二等奖的hybrid模型，支持回归和分类任务
+还有一个集成了上述功能的AutoProcessor，新手可以调用它一键处理数据；以及自动线性回归（回归任务包括ols、ridge和lasso回归， 分类任务包括逻辑回归）；还有在首届厚方杯获得二等奖的hybrid模型，支持回归和分类任务
 
 
 目前还计划加入时间序列分析模块，并继续完善自动建模功能
