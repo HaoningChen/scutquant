@@ -174,17 +174,33 @@ def split(X, test_size=0.2):
     return X_train, X_test
 
 
-def sk_split(X, test_size, random_state=None):
+def sk_split(X, y, test_size=0.2, random_state=None):
     from sklearn.model_selection import train_test_split
-    col = X.columns
-    X_train, X_test = train_test_split(X, test_size=test_size, random_state=random_state)
-    X_train = pd.DataFrame(X_train, columns=col)
-    X_test = pd.DataFrame(X_test, columns=col)
-    return X_train, X_test
+    x_col = X.columns
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+    X_train = pd.DataFrame(X_train, columns=x_col)
+    X_test = pd.DataFrame(X_test, columns=x_col)
+    y_train = pd.DataFrame(y_train)
+    y_test = pd.DataFrame(y_test)
+    return X_train, X_test, y_train, y_test
 
 
-def groupKfold_split(X, n_split):
-    return X
+def groupKfold_split(X, y, n_split=5):
+    from sklearn.model_selection import GroupKFold
+    groups = np.arange(len(X))
+    x_col = X.columns
+    X = np.array(X)
+    y = np.array(y)
+    gkf = GroupKFold(n_splits=n_split)
+    gkf.get_n_splits(X, y, groups)
+    for train_idx, test_idx in gkf.split(X, y, groups=groups):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+    X_train = pd.DataFrame(X_train, columns=x_col)
+    X_test = pd.DataFrame(X_test, columns=x_col)
+    y_train = pd.DataFrame(y_train)
+    y_test = pd.DataFrame(y_test)
+    return X_train, X_test, y_train, y_test
 
 
 ####################################################
