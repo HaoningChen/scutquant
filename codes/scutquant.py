@@ -422,6 +422,8 @@ def ic_ana(pred, y, freq=1):
     rank_ic = pd.Series(rank_ic)
     plt.plot(ic, label='ic', marker='o')
     plt.plot(rank_ic, label='rank_ic', marker='o')
+    plt.xlabel('time_id')
+    plt.ylabel('score')
     plt.title('IC Series')
     plt.legend()
     plt.show()
