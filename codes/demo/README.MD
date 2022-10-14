@@ -1,7 +1,12 @@
-这是一个使用scutquant对PTA期货数据进行因子构建、数据处理和自动建模的案例  
+scutquant_demo是一个使用scutquant对PTA期货数据进行因子构建、自动数据处理和建模的案例  
 
 构建好因子和label后，我们使用AutoProcessor完成以下工作：  
 
 填充/去除NaN、拆分数据集、统计训练集中目标值为0的占比并决定是否降采样/升采样、label_norm和feature_norm、计算因子相关系数并决定是否正交化、计算因子和label的Mutual Information并去除score=0的因子  
 
-然后，我们初始化一个hybrid类，并使用fit方法拟合模型，使用predict方法预测测试集的label，最后，我们计算预测值和实际值的pearson_correlation_coefficient和IC作为评估模型的指标，并使用dump方法保存模型
+然后，我们初始化一个hybrid类，并使用fit方法拟合模型，使用predict方法预测测试集的label，最后，我们计算预测值和实际值的pearson_correlation_coefficient和IC作为评估模型的指标，并使用dump方法保存模型  
+
+
+而scutquant_ts_demo是一个使用scutquant的时间序列模块进行快速分析，并且构建时序特征的案例，包括画出移动平均图查看趋势、使用周期图查看季节性特征和使用lag_plot函数查看周期性，并针对趋势、季节和周期构建相应的特征  
+
+PS: 时间序列由趋势（trend），季节性（seasonality），周期性（cycle）和随机误差（error）组成
