@@ -283,6 +283,7 @@ def AutoProcessor(X, y, test_size=0.2, norm='z', label_norm=True, drop_useless_f
         # print(useless_fea)
         X_train = X_train.drop(useless_fea, axis=1)
         X_test = X_test.drop(useless_fea, axis=1)
+        print(str(len(useless_fea)) + ' features will be dropped')
     # print(X_train.describe())
     print('all works done', '\n')
     return X_train, X_test, y_train, y_test, ymean, ystd
