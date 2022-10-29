@@ -634,7 +634,7 @@ def lag_plot(x, lags, y=None, nrows=2, **kwargs):
     plt.show()
 
 
-def make_lags(X, lags, data=None, col=None):
+def make_lags(X, data=None, lags=1, col=None):
     if data is None:
         data = X
     for i in range(1, lags + 1):
