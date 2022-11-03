@@ -12,8 +12,8 @@
   三种标准化方式、计算多重共线性、PCA和对称正交、计算feature和label的Mutual Information、画出数据分布、拆分数据集（按顺序拆分、随机拆分（train_test_split二次封装）
   和GroupKFold）、以及构建时间序列特征
   
- 可解释性：
-   目前只实现了hybrid模型的可解释，具体包括plot_importance和给出各个特征的回归系数
+ 可解释性：  
+   目前只实现了hybrid模型的可解释，具体包括plot_importance和给出各个特征的回归系数，函数为hybrid中的explain_model(index)，参数为特征的列名
  
 还有一个集成了上述功能的AutoProcessor，新手可以调用它一键处理数据；以及自动线性回归（回归任务包括ols、ridge和lasso回归，分类任务包括逻辑回归）和自动时间序列分析模块；我们还提供了在首届厚方杯获得二等奖的hybrid模型，支持回归和分类任务
 
