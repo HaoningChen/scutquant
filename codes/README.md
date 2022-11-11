@@ -37,4 +37,4 @@
 
 2022.11.11
 
-新增了交易信号发射器signal_generator，它有两种模式，可以实时更新原始数据，实时计算因子并调用模型进行预测从而下单（simulator），也可以使用事先计算好的predict进行下单（generate）
+新增了交易信号发射器signal_generator，它有两种模式，可以实时更新原始数据，实时计算因子并调用模型进行预测从而下单（simulator），也可以使用事先计算好的predict进行下单（generate）。其中，simulator仅支持面板数据，generate支持面板数据和序列数据（generate和generate_series）
