@@ -6,4 +6,4 @@ workflow示意图（如上）
 
 数据处理流程（到执行回测前  
 
-可以查看demo.ipynb快速上手
+可以查看[demo.ipynb](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/demo.ipynb)快速上手
