@@ -817,13 +817,13 @@ def lag_plot(x, lags, y=None, nrows=2, **kwargs):
 
 def make_lags(X, data=None, lags=1, start=1, col=None, name=None):
     """
-    :param X:
-    :param data:
-    :param lags:
-    :param start:
-    :param col:
-    :param name:
-    :return:
+    :param X: pd.DataFrame, 整个数据集
+    :param data: pd.Series or pd.DataFrame, 目标列, 不一定要在X中
+    :param lags: int, 滞后阶数
+    :param start: int, 从第几阶开始滞后
+    :param col: list, 若需要滞后的变量不止一个, 即data为pd.DataFrame, 传入变量名的列表
+    :param name: str, 为滞后项命名
+    :return: pd.DataFrame, 加入了滞后项的数据集
     """
     if data is None:
         data = X
