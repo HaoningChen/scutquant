@@ -11,5 +11,6 @@
 
 ![Figure_1](https://user-images.githubusercontent.com/101194077/205479965-23b366f9-243d-41f9-953d-bf254d92b4b3.png)
 
+**快速上手**
 
-！！ 可以查看[demo.ipynb](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/demo.ipynb)快速上手 ！！
+请查看[demo.ipynb](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/demo.ipynb)以快速上手
