@@ -34,7 +34,7 @@ class Account:
         self.risk_curve = []
         # todo: 增加换手率(turnover)
 
-    def check_order(self, order, price, cost_rate=0.00015, min_cost=5, risk_degree=0.95):  # 检查是否有足够的资金完成order
+    def check_order(self, order, price, cost_rate=0.00015, min_cost=5):  # 检查是否有足够的资金完成order
         # todo: 增加风险度判断（执行该order会不会超出最大风险度）
         cash_inflow = 0.0
         cash_outflow = 0.0
