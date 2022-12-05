@@ -12,4 +12,4 @@
 
 [文件](https://github.com/HaoningChen/ScutQuant/tree/main/文件): 存放技术沙龙文件和其它资料  
 
-[网站](https://haoningchen.github.io/ScutQuant/)
+[网站](https://haoningchen.github.io/ScutQuant/): 请用pc端打开
