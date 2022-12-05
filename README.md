@@ -10,4 +10,6 @@
 
 [scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant): 我们的量化工具包，包括生成因子的alpha, 数据处理和建模的scutquant, 生成订单命令的signal_generator, 回测用的account和执行回测的executor;   
 
-[文件](https://github.com/HaoningChen/ScutQuant/tree/main/文件): 存放技术沙龙文件和其它资料
+[文件](https://github.com/HaoningChen/ScutQuant/tree/main/文件): 存放技术沙龙文件和其它资料  
+
+[网站](https://haoningchen.github.io/ScutQuant/)
