@@ -9,7 +9,8 @@
 
 **回测结果（资金曲线）示意图**
 
-![Figure_1](https://user-images.githubusercontent.com/101194077/205479965-23b366f9-243d-41f9-953d-bf254d92b4b3.png)
+![Figure_1](https://user-images.githubusercontent.com/101194077/205918126-7cba022c-6281-4502-b136-7f03e9026643.png)
+
 
 **快速上手**
 
