@@ -15,5 +15,3 @@
 **快速上手**
 
 请查看[demo.ipynb](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/demo.ipynb)以快速上手
-
-希望看到各因子表现的，可移步
