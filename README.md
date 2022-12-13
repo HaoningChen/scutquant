@@ -22,6 +22,10 @@
 
 存放技术沙龙文件和其它资料  
 
+[杂记](https://github.com/HaoningChen/ScutQuant/tree/main/杂记)
+
+一些不用太烧脑的非正式知识分享
+
 [网站](https://haoningchen.github.io/ScutQuant/): 
 
 请用pc端打开
