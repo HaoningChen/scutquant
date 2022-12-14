@@ -24,7 +24,7 @@
 
 [杂记](https://github.com/HaoningChen/ScutQuant/tree/main/杂记)
 
-一些不用太烧脑的非正式知识分享
+一些不用太烧脑的非正式科普
 
 [网站](https://haoningchen.github.io/ScutQuant/): 
 
