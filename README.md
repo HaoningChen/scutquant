@@ -24,7 +24,7 @@
 
 [杂记](https://github.com/HaoningChen/ScutQuant/tree/main/杂记)
 
-一些不用太烧脑的非正式科普(里面的数学公式可能要刷新几次才能显示出来)
+一些不太烧脑的非正式科普(里面的数学公式可能要刷新几次才能显示出来)
 
 [网站](https://haoningchen.github.io/ScutQuant/): 
 
