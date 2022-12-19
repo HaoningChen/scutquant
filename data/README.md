@@ -1,6 +1,6 @@
 一些数据，供大家练手，勿外传
 
-数据集说明:
+**数据集说明:**
 
 [2y_IBM.csv](https://github.com/HaoningChen/ScutQuant/blob/main/data/2y_IBM.csv): IBM两年的分钟级股价数据(时间间隔不规则), 包括'time', 'open', 'high', 'low', 'close', 'volume'变量
 
