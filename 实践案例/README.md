@@ -4,4 +4,4 @@
 3、搭建至少5种模型，并评价拟合优度
 
 教程：  
-[tutorial](https://github.com/HaoningChen/ScutQuant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/tutorial.ipynb)是一个使用沪深300数据集(日频数据, 时间从2014-01-01到20021-06-11, 剔除ST股)构建因子, 并使用线性回归模型(OLS)预测收益率的例子
+[tutorial](https://github.com/HaoningChen/ScutQuant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/tutorial.ipynb)是一个使用沪深300数据集(日频数据, 时间从2014-01-01到20021-06-11, 剔除ST股)构建因子, 并使用线性回归模型(OLS)预测收益率的例子，要复现它请使用最新版本的scutquant
