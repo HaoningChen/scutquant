@@ -8,7 +8,6 @@
 [教程数据](https://www.kaggle.com/datasets/harleychan/csi300)
 
 **PS:模型的分类(从形式的角度)**  
-
 **线性模型:** 线性回归模型, 包括OLS、ridge回归和lasso回归，弹性网络模型等；分类模型有逻辑回归等;  
 **树模型:** xgboost, catboost, lightbgm...  
 **神经网络模型:** DNN, CNN, TCN, RNN, LSTM, Bi-LSTM, Transformer...
