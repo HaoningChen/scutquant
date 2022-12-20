@@ -10,6 +10,6 @@
 **PS:模型的分类(从形式的角度)**  
 **[线性模型](https://scikit-learn.org/stable/modules/linear_model.html):** 线性回归模型, 包括OLS、ridge回归和lasso回归，弹性网络模型等；分类模型有逻辑回归等;  
 **树模型:** [xgboost](https://www.kaggle.com/code/alexisbcook/xgboost), [catboost](https://catboost.ai/), [lightgbm](https://lightgbm.readthedocs.io/en/v3.3.2/)...  
-**神经网络模型:** DNN, CNN, TCN, RNN, LSTM, Bi-LSTM, Transformer...  
+**神经网络模型:** DNN, CNN, TCN, RNN, LSTM, Bi-LSTM, Transformer..., 神经网络原理请参考[链接](https://github.com/microsoft/ai-edu/tree/master/%E5%9F%BA%E7%A1%80%E6%95%99%E7%A8%8B/A2-%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86)  
 组合模型, 可以由上述三大类模型之间的任两类(或者三类同时用上)组合而成  
 其它机器学习模型
