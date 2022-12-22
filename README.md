@@ -11,6 +11,8 @@
 [scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant):  
 我们的量化工具包，写出来的主要目的是让大家了解量化投资平台的架构和主要包括什么功能。目前包括生成因子的alpha, 数据处理和建模的scutquant, 生成订单命令的signal_generator, 回测用的account和执行回测的executor。特色是支持高频数据和仿真交易（即模拟实时更新数据，生成因子并用模型输出预测值，用预测值生成交易信号和执行交易的全过程）  
 
+[实践案例](https://github.com/HaoningChen/ScutQuant/tree/main/实践案例): 实践出真知, 提供难度适中的任务给大家练手
+
 [文件](https://github.com/HaoningChen/ScutQuant/tree/main/文件): 存放技术沙龙文件和其它资料  
 
 [杂记](https://github.com/HaoningChen/ScutQuant/tree/main/杂记)： 一些不太烧脑的非正式科普(里面的数学公式可能要刷新几次才能显示出来)  
