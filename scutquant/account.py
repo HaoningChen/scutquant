@@ -94,18 +94,28 @@ class Account:
         cost = max(min_cost, sell_value * cost_rate) if sell_value != 0 else 0
         self.cash += (sell_value - cost)  # 更新现金
 
-    def update_all(self, order, price, cost_buy=0.00015, cost_sell=0.00005, min_cost=5, buy=True):
+    def update_all(self, order, price, cost_buy=0.00015, cost_sell=0.00005, min_cost=5, trade=True):
         # 更新市场价格、交易记录、持仓和可交易数量、交易费用和现金，市值
         # order的Key不一定要包括所有资产，但必须是position的子集
         Account.update_price(self, price)  # 首先更新市场价格
         Account.update_trade_hist(self, order)  # 然后更新交易记录
         if order is not None:
-            Account.sell(self, order['sell'], cost_buy, min_cost)
-            if buy:
+            if trade:
+                Account.sell(self, order['sell'], cost_buy, min_cost)
                 Account.buy(self, order['buy'], cost_sell, min_cost)
         Account.update_value(self)
 
     def auto_offset(self, freq, cost_buy=0.00015, cost_sell=0.00005, min_cost=5):  # 自动平仓
+        """
+        example: 对某只股票的买入记录为[4, 1, 1, 2, 3], 假设买入后2个tick平仓, 则自动平仓应为[nan, nan, 4, 1, 1]
+
+        :param freq: 多少个tick后平仓
+        :param cost_buy: 买入费率
+        :param cost_sell: 卖出费率
+        :param min_cost: 最小交易费用
+        :return:
+        """
+        freq += 1
         if len(self.buy_hist) >= freq:
             offset_buy = self.sell_hist[-freq]
             offset_sell = self.buy_hist[-freq]

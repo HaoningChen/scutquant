@@ -67,10 +67,11 @@ class Executor:
                 self.ben_position[code] = int(cash_invest / (self.price[code] * 100) + 0.5) * 100  # 四舍五入取整, 以百为单位
                 self.ben_cash -= self.ben_position[code] * self.price[code]
 
-    def execute(self, data):
+    def execute(self, data, verbose=0):
         # todo: 增加simulate模式
         """
         :param data: pd.DataFrame, 包括三列：'predict', 't', 'price' 以及多重索引[('time', 'code')]
+        :param verbose: bool, 是否输出交易记录
         :return: self
         """
 
@@ -93,12 +94,14 @@ class Executor:
             for t in time:
                 order, current_price = signal_generator.generate(signal=data, index=t, time='t', buy_volume=self.buy_vol,
                                                                  sell_volume=self.sell_vol)
+                if verbose == 1:
+                    print(order, '\n')
                 if self.auto_offset:
                     self.user_account.auto_offset(freq=self.offset_freq, cost_buy=self.cost_buy,
                                                   cost_sell=self.cost_sell, min_cost=self.min_cost)
-                buy = self.user_account.check_order(order, current_price)
+                trade = self.user_account.check_order(order, current_price)
                 self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
-                                             cost_sell=self.cost_sell, min_cost=self.min_cost, buy=buy)
+                                             cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)
                 self.user_account.risk_control(risk_degree=self.risk_degree, cost_rate=self.cost_sell,
                                                min_cost=self.min_cost)
                 self.benchmark.update_all(order=None, price=current_price)
