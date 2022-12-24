@@ -1,6 +1,26 @@
 from . import account, signal_generator  # 别动这行！
 
 
+def prepare(predict, data, time, price):
+    """
+    :param predict: pd.DataFrame, 预测值, 应包括"predict"
+    :param data: pd.DataFrame, 提供时间和价格信息
+    :param time: str, data中表示时间的列名
+    :param price: str, data中表示价格的列名
+    :return: pd.DataFrame
+    """
+    predict.columns = ['predict']
+    index = predict.index
+    data1 = data[data.index.isin(index)]
+    data1 = data1.reset_index()
+    data1['t'] = data1[time]
+    data1 = data1.set_index(predict.index.names).sort_index()
+    predict['t'] = data1['t']
+    predict['price'] = data1[price]
+    predict.index.names = ['time', 'code']
+    return predict
+
+
 class Executor:
     def __init__(self,
                  generator: dict,  # 生成器
@@ -92,7 +112,8 @@ class Executor:
         if self.mode == 'generate':
             time = data['t'].unique()
             for t in time:
-                order, current_price = signal_generator.generate(signal=data, index=t, time='t', buy_volume=self.buy_vol,
+                order, current_price = signal_generator.generate(signal=data, index=t, time='t',
+                                                                 buy_volume=self.buy_vol,
                                                                  sell_volume=self.sell_vol)
                 if verbose == 1:
                     print(order, '\n')

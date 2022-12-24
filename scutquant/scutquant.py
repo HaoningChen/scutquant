@@ -380,8 +380,8 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
         mi_score = make_mi_scores(X_train, y_train)
         print(mi_score)
         print(mi_score.describe())
-        feature_selector(X_train, mi_score, value=0, verbose=1)
-        feature_selector(X_test, mi_score)
+        X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
+        X_test = feature_selector(X_test, mi_score)
     # print(X_train.describe())
     print('all works done', '\n')
     return X_train, X_test, y_train, y_test, ymean, ystd
