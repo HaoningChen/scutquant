@@ -67,7 +67,7 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
     if excess_return:
         excess_return = []
         for i in range(len(acc_ret)):
-            excess_return.append(acc_val[i] - ben_ret[i])
+            excess_return.append(acc_ret[i] - ben_ret[i])
         plot([excess_return], label=['excess_return'], title='Excess Rate of Return', xlabel='time_id', ylabel='value')
 
     if risk:
