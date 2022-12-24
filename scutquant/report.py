@@ -51,8 +51,8 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
     acc_ret = []
     ben_ret = []
     for i in range(len(acc_val)):
-        acc_ret.append(acc_val[i] / init_val_acc)
-        ben_ret.append(ben_val[i] / init_val_ben)
+        acc_ret.append(acc_val[i] / init_val_acc - 1)
+        ben_ret.append(ben_val[i] / init_val_ben - 1)
 
     sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq)
     inf_ratio = information_ratio(acc_ret, ben_ret)
