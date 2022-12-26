@@ -182,6 +182,7 @@ def process_inf(X):
 
 
 def clean(X, axis=0):
+    X.dropna(axis=1, how='all', inplace=True)
     X = fillna(X)
     X = dropna(X, axis)
     return X
@@ -316,6 +317,7 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
     if groupby is None:
         X = clean(X)
     else:
+        X.dropna(axis=1, how='all', inplace=True)
         X = X.groupby([groupby]).fillna(method='ffill').dropna()
     print('clean dataset done', '\n')
 
@@ -355,6 +357,8 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
         X_train = clean(X_train)
         X_test = clean(X_test)
     else:
+        X_train.dropna(axis=1, how='all', inplace=True)
+        X_test.dropna(axis=1, how='all', inplace=True)
         X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
         X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
     print('norm data done', '\n')
