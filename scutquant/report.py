@@ -112,6 +112,7 @@ def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):
     :return:
     """
     y_true.columns = ['label']
+    y_true.index.names = ['time', 'code']
     predict = pd.concat([pred, y_true], axis=1)
     predict = predict.sort_values("predict", ascending=False)
     t_df = pd.DataFrame(
