@@ -26,7 +26,7 @@ class Executor:
                  generator: dict,  # 生成器
                  acc: dict, cost_buy: float, cost_sell: float, min_cost: int,  # 账户和交易费率
                  risk_degree: float = 0.95, auto_offset: bool = False, offset_freq: int = 1,
-                 buy_volume: int = 10, sell_volume: int = 10):  # 额外功能，风险控制和自动平仓
+                 buy_volume: int = 10, sell_volume: int = 10, buy_only: bool=False):
         # todo: 增加信号发射器的可选参数
         """
         :param generator: dict, 包括 'mode' 和其它内容, 为执行器找到合适的信号生成方式
@@ -39,6 +39,7 @@ class Executor:
         :param offset_freq: 自动平仓的参数，由label构建方式决定
         :param buy_volume: 每次买入的手数
         :param sell_volume: 每次卖出的手数
+        :param buy_only: 是否只允许做多并平仓
         """
         self.mode = generator['mode']
 
@@ -59,6 +60,7 @@ class Executor:
         self.offset_freq = offset_freq
         self.buy_vol = buy_volume
         self.sell_vol = sell_volume
+        self.buy_only = buy_only
 
     def create_account(self):
         self.user_account = account.Account(self.init_cash, self.position, self.available, self.price)
@@ -113,8 +115,8 @@ class Executor:
             time = data['t'].unique()
             for t in time:
                 order, current_price = signal_generator.generate(signal=data, index=t, time='t',
-                                                                 buy_volume=self.buy_vol,
-                                                                 sell_volume=self.sell_vol)
+                                                                 buy_volume=self.buy_vol, sell_volume=self.sell_vol,
+                                                                 buy_only=self.buy_only)
                 if verbose == 1:
                     print(order, '\n')
                 if self.auto_offset:

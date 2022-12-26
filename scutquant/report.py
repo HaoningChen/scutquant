@@ -72,11 +72,16 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
     inf_ratio = information_ratio(acc_ret, ben_ret)
     acc_mdd = calculate_mdd(pd.Series(acc_ret))
     ben_mdd = calculate_mdd(pd.Series(ben_ret))
+
+    print('E(r):', pd.Series(acc_ret).mean())
+    print('std:', pd.Series(acc_ret).std())
+    print('E(r_benchmark):', pd.Series(ben_ret).mean())
+    print('std_benchmark:', pd.Series(ben_ret).std(), '\n')
     print('Cumulative Rate of Return:', acc_ret[-1])
     print('Cumulative Rate of Return(benchmark):', ben_ret[-1])
-    print('Cumulative Excess Rate of Return:', excess_ret[-1])
+    print('Cumulative Excess Rate of Return:', excess_ret[-1], '\n')
     print('Max Drawdown:', acc_mdd.min())
-    print('Max Drawdown(benchmark):', ben_mdd.min())
+    print('Max Drawdown(benchmark):', ben_mdd.min(), '\n')
     print('Sharpe Ratio:', sharpe)
     print('Information Ratio:', inf_ratio)
 

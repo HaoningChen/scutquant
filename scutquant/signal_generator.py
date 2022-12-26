@@ -94,7 +94,7 @@ def simulate(x, index, get_predict, factor_kwargs, xmean, xstd, ymean, ystd, mod
 
 
 def generate(signal, index, pred='predict', time='time', price='price', index_level='code', buy_=0.0005, sell_=-0.0005,
-             buy_volume=10, sell_volume=10, unit='lot'):
+             buy_volume=10, sell_volume=10, unit='lot', buy_only=False):
     """
     :param signal: prediction, pd.DataFrame,  ！！！ SHOULD INCLUDE 2(or 3) COLUMNS：predict, (time), price,
                                                                   AND MULTIINDEX[('time', 'code')]！！！
@@ -109,6 +109,7 @@ def generate(signal, index, pred='predict', time='time', price='price', index_le
     :param buy_volume: number of lots each time you buy, int
     :param sell_volume: number of lots each time you buy, int
     :param unit: unit of buy or sell, 'lot' or 'share', str
+    :param buy_only: bool, in Chinese market, there are strict short-selling restrictions.
     :return: order, dict； current_price(of all stocks available), dict
     """
     # example
@@ -128,7 +129,10 @@ def generate(signal, index, pred='predict', time='time', price='price', index_le
     current_price = sig.droplevel(0)[price].to_dict()
 
     buy_dict = buy(code=buy_list, volume=buy_volume, unit=unit)
-    sell_dict = sell(code=sell_list, volume=sell_volume, unit=unit)
+    if buy_only:
+        sell_dict = {}
+    else:
+        sell_dict = sell(code=sell_list, volume=sell_volume, unit=unit)
     order = {
         'buy': buy_dict,
         'sell': sell_dict
