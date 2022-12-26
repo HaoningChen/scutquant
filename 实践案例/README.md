@@ -7,7 +7,7 @@
 ps: 特征构建可以参考[国泰君安：基于短周期价量特征的多因子选股体系](https://github.com/HaoningChen/ScutQuant/blob/main/%E6%96%87%E4%BB%B6/%E5%9B%BD%E6%B3%B0%E5%90%9B%E5%AE%89%EF%BC%9A%E5%9F%BA%E4%BA%8E%E7%9F%AD%E5%91%A8%E6%9C%9F%E4%BB%B7%E9%87%8F%E7%89%B9%E5%BE%81%E7%9A%84%E5%A4%9A%E5%9B%A0%E5%AD%90%E9%80%89%E8%82%A1%E4%BD%93%E7%B3%BB.pdf)和[alpha158](https://github.com/microsoft/qlib/blob/main/qlib/contrib/data/handler.py)  
 
 **教程：**  
-[tutorial](https://github.com/HaoningChen/ScutQuant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/tutorial.ipynb)是一个使用沪深300数据集(日频数据, 训练集时间从2010-01-01到2021-12-31, 测试集时间从2022-01-01至2022-12-24，剔除ST股和涨跌停股，使用后复权价格)构建因子, 并使用hybrid模型预测收益率的例子，要复现它请使用最新版本的scutquant(目前是v0.0.1).  
+[tutorial](https://github.com/HaoningChen/ScutQuant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/tutorial.ipynb)是一个使用沪深300数据集(日频数据, 训练集时间从2010-01-01到2021-12-31, 测试集时间从2022-01-01至2022-12-24，剔除ST股和涨跌停股，使用后复权价格)构建因子, 并使用hybrid模型预测收益率的例子，要复现它请使用最新版本的scutquant(目前是v0.0.2).  
 教程中的策略是: 在T时刻预测T+2对T+1的收益率，并在T+1时刻开仓，T+2自动平仓.考虑到中国股市对做空进行了很严格的限制，策略选择了只做多并平仓的做法  
 [教程数据](https://www.kaggle.com/datasets/harleychan/csi300)
 
