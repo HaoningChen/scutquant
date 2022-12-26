@@ -99,22 +99,25 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
         plot([risk], label=['risk_degree'], title='Risk Degree', xlabel='time_id', ylabel='value')
 
 
-def group_return_ana(pred, n=5, groupby='time', figsize=(10, 6)):
+def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):
     """
     因子对股票是否有良好的区分度, 若有, 则应出现明显的分层效应(即单调性)
     此处的收益为因子收益率，非真实收益率
 
     :param pred: pd.DataFrame or pd.Series, 预测值
+    :param y_true: pd.DataFrame or pd.Series, 真实的收益率
     :param n: int, 分组数量(均匀地分成n组)
     :param groupby: str, groupby的索引
     :param figsize: 图片大小
     :return:
     """
-    predict = pred.sort_values("predict", ascending=False)
+    y_true.columns = 'label'
+    predict = pd.concat([pred, y_true], axis=1)
+    predict = predict.sort_values("predict", ascending=False)
     t_df = pd.DataFrame(
         {
             "Group%d"
-            % (i + 1): predict.groupby(level=groupby)["predict"].apply(
+            % (i + 1): predict.groupby(level=groupby)["label"].apply(
                 lambda x: x[len(x) // n * i: len(x) // n * (i + 1)].mean()  # 第 len(x) // n * i 行到 len(x) //n * (i+1) 行
             )
             for i in range(n)
