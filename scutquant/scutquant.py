@@ -8,6 +8,49 @@ from scipy.signal import periodogram
 from statsmodels.graphics.tsaplots import plot_pacf
 
 
+def join_data(data, data_join, time='datetime', col=None, index=None):
+    """
+    将序列数据(例如宏观的利率数据)整合到面板数据中(例如沪深300成分)
+    example:
+
+    df_train = scutquant.join_data(df_train, series_train, col=['index_return', 'rf'])
+    df_test = scutquant.join_data(df_test, series_test, col=['index_return', 'rf'])
+    df = pd.concat([df_train, df_test], axis=0)
+
+    :param data: pd.Series or pd.DataFrame, 股票数据(面板数据)
+    :param data_join: pd.Series or pd.DataFrame, 要合并的序列数据
+    :param time: str, 表示时间的列(两个数据集同时拥有)
+    :param col: list, 被合并数据的列名(必须在data_join中存在)
+    :param index: list, 面板数据的索引
+    """
+    if index is None:
+        index = ['datetime', 'instrument']
+    data = data.reset_index()
+    data_join = data_join.reset_index()
+    T = data[time].unique()
+
+    asset_list = []
+    for t in T:
+        data_choosed = data[data[time] == t]  # 找出每天资产池中资产的数量
+        asset_list.append(len(data_choosed))
+
+    if col is not None:
+        for c in col:
+            idx = 0
+            d_list = []
+            for a in asset_list:
+                data_join_choosed = data_join[c][idx]
+                # print(data_join_choosed)
+                for asset in range(a):
+                    d_list.append(data_join_choosed)
+                idx += 1
+            data[c] = d_list
+
+    data.set_index(index, inplace=True)
+    data = data.drop('index', axis=1)
+    return data
+
+
 ####################################################
 # 特征工程
 ####################################################

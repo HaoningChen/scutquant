@@ -112,7 +112,7 @@ def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):
     :return:
     """
     y_true.columns = ['label']
-    y_true.index.names = ['time', 'code']
+    y_true.index.names = pred.index.names
     predict = pd.concat([pred, y_true], axis=1)
     predict = predict.sort_values("predict", ascending=False)
     t_df = pd.DataFrame(
@@ -124,6 +124,11 @@ def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):
             for i in range(n)
         }
     )
+    # 多空组合(即做多排名靠前的股票，做空排名靠后的股票)
+    t_df["long-short"] = t_df["Group1"] - t_df["Group%d" % n]
+
+    # Long-Average
+    t_df["long-average"] = t_df["Group1"] - predict.groupby(level=groupby)["label"].mean()
     t_df.index = np.arange(len(t_df.index))
     # print(t_df.head(5))
     cols = t_df.columns
