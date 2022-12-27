@@ -10,11 +10,11 @@ from statsmodels.graphics.tsaplots import plot_pacf
 
 def join_data(data, data_join, time='datetime', col=None, index=None):
     """
-    将序列数据(例如宏观的利率数据)整合到面板数据中(例如沪深300成分)
+    将序列数据(例如宏观的利率数据)按时间整合到面板数据中(例如沪深300成分)
     example:
 
-    df_train = scutquant.join_data(df_train, series_train, col=['index_return', 'rf'])
-    df_test = scutquant.join_data(df_test, series_test, col=['index_return', 'rf'])
+    df_train = scutquant.join_data(df_train, series_train, col=['index_return', 'rf'], index=['datetime', instrument'])
+    df_test = scutquant.join_data(df_test, series_test, col=['index_return', 'rf'], index=['datetime', 'instrument'])
     df = pd.concat([df_train, df_test], axis=0)
 
     :param data: pd.Series or pd.DataFrame, 股票数据(面板数据)
@@ -46,6 +46,33 @@ def join_data(data, data_join, time='datetime', col=None, index=None):
                 idx += 1
             data[c] = d_list
 
+    data.set_index(index, inplace=True)
+    data = data.drop('index', axis=1)
+    return data
+
+
+def join_data_by_code(data, data_join, code='instrument', col=None, index=None):
+    """
+    场景：CAPM中每支股票对应一个beta和一个alpha（n*3的序列，包括股票代码、beta和alpha）, 将它们整合到股票的面板数据中（至少包括time, 股票代码）
+
+    :param data: pd.DataFrame or pd.Series, 面板数据
+    :param data_join: pd.DataFrame or pd.Series
+    :param code: str, 表示股票代码的列
+    :param col: list, data_join中待合并的列名
+    :param index: list, 合并后设置的索引
+    :return: pd.DataFrame
+    """
+    if index is None:
+        index = ['datetime', 'instrument']
+    data = data.reset_index()
+    data_join = data_join.reset_index()
+    for c in col:
+        data[c] = 0
+    for i in data[code].unique():
+        ind = data[data[code] == i].index
+        for c in range(len(col)):
+            data_ = data_join[data_join[code] == i][col[c]].values[0]
+            data.loc[ind, col[c]] = data_
     data.set_index(index, inplace=True)
     data = data.drop('index', axis=1)
     return data
