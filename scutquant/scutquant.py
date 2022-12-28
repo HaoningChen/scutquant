@@ -47,7 +47,6 @@ def join_data(data, data_join, time='datetime', col=None, index=None):
             data[c] = d_list
 
     data.set_index(index, inplace=True)
-    data = data.drop('index', axis=1)
     return data
 
 
