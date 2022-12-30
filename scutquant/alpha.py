@@ -160,7 +160,7 @@ def rsv_series(price, high, low, n):
     return r.values
 
 
-def make_factors(kwargs, windows=None):
+def make_factors(kwargs=None, windows=None):
     """
     面板数据适用，序列数据请移步 make_factors_series
 
@@ -200,6 +200,23 @@ def make_factors(kwargs, windows=None):
     :param windows: list, 移动窗口的列表
     :return: pd.DataFrame
     """
+    if "price" not in kwargs.keys():
+        kwargs["price"] = "close"
+    if "open" not in kwargs.keys():
+        kwargs["open"] = "open"
+    if "volume" not in kwargs.keys():
+        kwargs["volume"] = "volume"
+    if "amount" not in kwargs.keys():
+        kwargs["amount"] = "amount"
+    if "high" not in kwargs.keys():
+        kwargs["high"] = "high"
+    if "low" not in kwargs.keys():
+        kwargs["low"] = "low"
+    if "shift" not in kwargs.keys():
+        kwargs["shift"] = 1
+    if "groupby" not in kwargs.keys():
+        kwargs["groupby"] = "code"
+
     df = kwargs['data']
     price = kwargs['price']
     last_close = kwargs['open']
