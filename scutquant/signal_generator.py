@@ -93,89 +93,19 @@ def simulate(x, index, get_predict, factor_kwargs, xmean, xstd, ymean, ystd, mod
     return order, current_price
 
 
-def generate(signal, index, pred='predict', time='time', price='price', index_level='code', buy_=0.0005, sell_=-0.0005,
-             buy_volume=10, sell_volume=10, unit='lot', buy_only=False):
+def generate(data, strategy, price='price'):
     """
-    :param signal: prediction, pd.DataFrame,  ！！！ SHOULD INCLUDE 2(or 3) COLUMNS：predict, (time), price,
-                                                                  AND MULTIINDEX[('time', 'code')]！！！
-
-    :param index: 在循环中的中间变量
-    :param time: col index which represents of time, str
+    :param data: prediction, pd.DataFrame
+    :param strategy: 策略
     :param price: col index which represents of price, str
-    :param pred: str
-    :param index_level: str
-    :param buy_: min expected return rate for a buy decision, float
-    :param sell_: min expected return rate for a sell decision, float
-    :param buy_volume: number of lots each time you buy, int
-    :param sell_volume: number of lots each time you buy, int
-    :param unit: unit of buy or sell, 'lot' or 'share', str
-    :param buy_only: bool, in Chinese market, there are strict short-selling restrictions.
     :return: order, dict； current_price(of all stocks available), dict
     """
-    # example
-    # for idx in IDX:
-    #    order, current_price = signal_generator.generate(signal=predict, index=idx, buy_=0.0005, sell_=-0.0005)
 
-    buy_list = []
-    sell_list = []
-    sig = signal[signal[time] == index]
+    current_price = data.droplevel(0)[price].to_dict()
 
-    sig_b = sig[sig[pred].values >= buy_]
-    if len(sig_b) > 0:
-        buy_list += [i for i in sig_b.index.get_level_values(index_level).to_list()]
-    sig_s = sig[sig[pred].values <= sell_]
-    if len(sig_s) > 0:
-        sell_list += [i for i in sig_s.index.get_level_values(index_level).to_list()]
-    current_price = sig.droplevel(0)[price].to_dict()
-
-    buy_dict = buy(code=buy_list, volume=buy_volume, unit=unit)
-    if buy_only:
-        sell_dict = {}
-    else:
-        sell_dict = sell(code=sell_list, volume=sell_volume, unit=unit)
-    order = {
-        'buy': buy_dict,
-        'sell': sell_dict
+    order = strategy.to_signal(data)
+    dic = {
+        "order": order,
+        "current_price": current_price,
     }
-    return order, current_price
-
-
-def generate_series(signal, index, pred='predict', price='price', code='code', buy_=0.0005, sell_=-0.0005,
-                    buy_volume=10, sell_volume=10, unit='lot'):
-    """
-    :param signal: prediction, pd.DataFrame
-    :param index: 在循环中的中间变量
-    :param pred: col name of prediction, str
-    :param price: col name of price, str
-    :param code: stock code
-    :param buy_: float
-    :param sell_: float
-    :param buy_volume: int
-    :param sell_volume: int
-    :param unit: str
-    :return: order, current price
-    """
-    """
-    example:
-    df = df[0:15]
-    df['predict'] = [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1]
-
-    for i in range(len(df)):
-        order, price = signal_generator.generate_series(df, index=i, pred='predict', code='000001.SZ')
-        print(order)
-    """
-    buy_list = []
-    sell_list = []
-    if signal[pred][index] >= buy_:
-        buy_list.append(code)
-    elif signal[pred][index] <= sell_:
-        sell_list.append(code)
-
-    buy_dict = buy(code=buy_list, volume=buy_volume, unit=unit)
-    sell_dict = sell(code=sell_list, volume=sell_volume, unit=unit)
-    order = {
-        'buy': buy_dict,
-        'sell': sell_dict
-    }
-    current_price = {code: signal[price][index]}
-    return order, current_price
+    return dic

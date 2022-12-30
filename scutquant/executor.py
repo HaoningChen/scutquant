@@ -1,4 +1,4 @@
-from . import account, signal_generator  # 别动这行！
+from . import account, signal_generator, strategy  # 别动这行！
 
 
 def prepare(predict, data, time, price):
@@ -22,24 +22,12 @@ def prepare(predict, data, time, price):
 
 
 class Executor:
-    def __init__(self,
-                 generator: dict,  # 生成器
-                 acc: dict, cost_buy: float, cost_sell: float, min_cost: int,  # 账户和交易费率
-                 risk_degree: float = 0.95, auto_offset: bool = False, offset_freq: int = 1,
-                 buy_volume: int = 10, sell_volume: int = 10, buy_only: bool = False):
+    def __init__(self, generator, stra, acc, trade_params):
         # todo: 增加信号发射器的可选参数
         """
         :param generator: dict, 包括 'mode' 和其它内容, 为执行器找到合适的信号生成方式
         :param acc: dict, 账户
-        :param cost_buy: float, 买入费率
-        :param cost_sell: float, 卖出费率
-        :param min_cost: 最低交易费用
-        :param risk_degree: 风险度
-        :param auto_offset: 是否自动平仓
-        :param offset_freq: 自动平仓的参数，由label构建方式决定
-        :param buy_volume: 每次买入的手数
-        :param sell_volume: 每次卖出的手数
-        :param buy_only: 是否只允许做多并平仓
+
         """
         if acc is None:
             acc = {}
@@ -62,23 +50,20 @@ class Executor:
         self.ben_cash = acc['cash']
 
         self.price = None
-        self.time = None
+        self.time = []
 
         self.user_account = None
         self.benchmark = None
-        self.cost_buy = cost_buy
-        self.cost_sell = cost_sell
-        self.min_cost = min_cost
-        self.risk_degree = risk_degree
-        self.auto_offset = auto_offset
-        self.offset_freq = offset_freq
-        self.buy_vol = buy_volume
-        self.sell_vol = sell_volume
-        self.buy_only = buy_only
+        self.cost_buy = trade_params["cost_buy"]
+        self.cost_sell = trade_params["cost_sell"]
+        self.min_cost = trade_params["min_cost"]
 
-    def create_account(self):
-        self.user_account = account.Account(self.init_cash, self.position, self.available, self.price)
-        self.benchmark = account.Account(self.ben_cash, self.ben_position, {}, self.price.copy())
+        if stra["class"] == "BaselineStrategy":
+            self.s = strategy.BaselineStrategy(stra["kwargs"])
+        elif stra["class"] == "TopKStrategy":
+            self.s = strategy.TopKStrategy(stra["kwargs"])
+        else:
+            self.s = None
 
     def init_account(self, data):
         """
@@ -102,6 +87,10 @@ class Executor:
             for code in self.price.keys():
                 self.ben_position[code] = int(cash_invest / (self.price[code] * 100) + 0.5) * 100  # 四舍五入取整, 以百为单位
                 self.ben_cash -= self.ben_position[code] * self.price[code]
+
+    def create_account(self):
+        self.user_account = account.Account(self.init_cash, self.position, self.available, self.price)
+        self.benchmark = account.Account(self.ben_cash, self.ben_position, {}, self.price.copy())
 
     def execute(self, data, verbose=0):
         # todo: 增加simulate模式
@@ -128,19 +117,18 @@ class Executor:
         if self.mode == 'generate':
             time = data['t'].unique()
             for t in time:
-                order, current_price, time = signal_generator.generate(signal=data, index=t, time='t',
-                                                                       buy_volume=self.buy_vol,
-                                                                       sell_volume=self.sell_vol,
-                                                                       buy_only=self.buy_only)
+                data_select = data[data['t'] == t]
+                signal = signal_generator.generate(data=data_select, strategy=self.s)
+                order, current_price = signal["order"], signal["current_price"]
                 if verbose == 1:
                     print(order, '\n')
-                if self.auto_offset:
-                    self.user_account.auto_offset(freq=self.offset_freq, cost_buy=self.cost_buy,
+                if self.s.auto_offset:
+                    self.user_account.auto_offset(freq=self.s.offset_freq, cost_buy=self.cost_buy,
                                                   cost_sell=self.cost_sell, min_cost=self.min_cost)
                 trade = self.user_account.check_order(order, current_price)
                 self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
                                              cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)
-                self.user_account.risk_control(risk_degree=self.risk_degree, cost_rate=self.cost_sell,
+                self.user_account.risk_control(risk_degree=self.s.risk_degree, cost_rate=self.cost_sell,
                                                min_cost=self.min_cost)
                 self.benchmark.update_all(order=None, price=current_price)
         else:
