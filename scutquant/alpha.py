@@ -200,6 +200,8 @@ def make_factors(kwargs=None, windows=None):
     :param windows: list, 移动窗口的列表
     :return: pd.DataFrame
     """
+    if kwargs is None:
+        kwargs = {}
     if "price" not in kwargs.keys():
         kwargs["price"] = "close"
     if "open" not in kwargs.keys():

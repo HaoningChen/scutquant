@@ -26,7 +26,7 @@ class Executor:
                  generator: dict,  # 生成器
                  acc: dict, cost_buy: float, cost_sell: float, min_cost: int,  # 账户和交易费率
                  risk_degree: float = 0.95, auto_offset: bool = False, offset_freq: int = 1,
-                 buy_volume: int = 10, sell_volume: int = 10, buy_only: bool=False):
+                 buy_volume: int = 10, sell_volume: int = 10, buy_only: bool = False):
         # todo: 增加信号发射器的可选参数
         """
         :param generator: dict, 包括 'mode' 和其它内容, 为执行器找到合适的信号生成方式
@@ -41,6 +41,8 @@ class Executor:
         :param sell_volume: 每次卖出的手数
         :param buy_only: 是否只允许做多并平仓
         """
+        if acc is None:
+            acc = {}
         keys = acc.keys()
         if "cash" not in keys:
             acc["cash"] = 1e9
@@ -58,7 +60,9 @@ class Executor:
         self.available = acc['available']
         self.ben_position = acc['ben_position']
         self.ben_cash = acc['cash']
+
         self.price = None
+        self.time = None
 
         self.user_account = None
         self.benchmark = None
@@ -124,9 +128,10 @@ class Executor:
         if self.mode == 'generate':
             time = data['t'].unique()
             for t in time:
-                order, current_price = signal_generator.generate(signal=data, index=t, time='t',
-                                                                 buy_volume=self.buy_vol, sell_volume=self.sell_vol,
-                                                                 buy_only=self.buy_only)
+                order, current_price, time = signal_generator.generate(signal=data, index=t, time='t',
+                                                                       buy_volume=self.buy_vol,
+                                                                       sell_volume=self.sell_vol,
+                                                                       buy_only=self.buy_only)
                 if verbose == 1:
                     print(order, '\n')
                 if self.auto_offset:
