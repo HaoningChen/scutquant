@@ -10,13 +10,19 @@ def get_volume(asset, price=None, cash_available=None, num=10, unit=None):
             for i in range(len(n)):
                 n[i] = n[i] * 100
     else:
+
         invest = cash_available / len(asset)
         n = []
-        for a in asset:
-            n.append(int(invest / price[a]))
         if unit == 'lot':
+            for a in asset:
+                # 考虑到大单不一定成交，最大不超过500手
+                n.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= 500 else 500)
             for i in range(len(n)):
-                n[i] = int((n[i] / 100) + 0.5) * 100
+                n[i] = n[i] * 100
+        else:
+            for a in asset:
+                # 考虑到大单不一定成交，最大不超过500手, 即50000股
+                n.append(int(invest / price[a]) if int(invest / price[a]) <= 50000 else 50000)
     return n
 
 
