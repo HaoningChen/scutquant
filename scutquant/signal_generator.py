@@ -93,17 +93,15 @@ def simulate(x, index, get_predict, factor_kwargs, xmean, xstd, ymean, ystd, mod
     return order, current_price
 
 
-def generate(data, strategy, price='price'):
+def generate(data, strategy, cash_available=None):
     """
     :param data: prediction, pd.DataFrame
     :param strategy: 策略
-    :param price: col index which represents of price, str
+    :param cash_available: 可用于投资的资金
     :return: order, dict； current_price(of all stocks available), dict
     """
 
-    current_price = data.droplevel(0)[price].to_dict()
-
-    order = strategy.to_signal(data)
+    order, current_price = strategy.to_signal(data, cash_available=cash_available)
     dic = {
         "order": order,
         "current_price": current_price,

@@ -22,6 +22,7 @@ class Account:
 
     def __init__(self, init_cash: float, position: dict, available: dict, init_price: dict):
         self.cash = init_cash  # 可用资金
+        self.cash_available = init_cash
         self.position = position  # keys应包括所有资产，如无头寸则值为0，以便按照keys更新持仓
         self.available = available  # 需要持有投资组合的底仓，否则按照T+1制度无法做空
         self.price = init_price  # 资产价格
@@ -105,7 +106,7 @@ class Account:
                 Account.buy(self, order['buy'], cost_sell, min_cost)
         Account.update_value(self)
 
-    def auto_offset(self, freq, cost_buy=0.00015, cost_sell=0.00005, min_cost=5):  # 自动平仓
+    def auto_offset(self, freq, cost_buy=0.0015, cost_sell=0.0005, min_cost=5):  # 自动平仓
         """
         example: 对某只股票的买入记录为[4, 1, 1, 2, 3], 假设买入后2个tick平仓, 则自动平仓应为[nan, nan, 4, 1, 1]
 
@@ -122,7 +123,7 @@ class Account:
             Account.sell(self, offset_sell, cost_sell, min_cost)
             Account.buy(self, offset_buy, cost_buy, min_cost)
 
-    def risk_control(self, risk_degree, cost_rate=0.00005, min_cost=5):  # 控制风险, 当风险度超过计划风险度时, 按比例减少持仓
+    def risk_control(self, risk_degree, cost_rate=0.0005, min_cost=5):  # 控制风险, 当风险度超过计划风险度时, 按比例减少持仓
         # 令risk回到risk_degree: 各资产持仓量为向量x, 各资产市场价格为向量p, 总市值为v, 风险度 r = p*x/v. 即px = rv.
         # 求出减持比例b, 使得r = p*(1-b)x/v = risk_degree. 即1-b = risk_degree * v / (p * x), b = 1- (risk_degree * v) / (p*x)
         # 代入px=rv，得b = 1 - (risk_degree * v) / (r * v) = 1 - risk_degree / r

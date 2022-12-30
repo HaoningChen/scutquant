@@ -45,6 +45,7 @@ class Executor:
 
         self.init_cash = acc['cash']
         self.position = acc['position']
+        self.value_hold = 0.0
         self.available = acc['available']
         self.ben_position = acc['ben_position']
         self.ben_cash = acc['cash']
@@ -92,6 +93,13 @@ class Executor:
         self.user_account = account.Account(self.init_cash, self.position, self.available, self.price)
         self.benchmark = account.Account(self.ben_cash, self.ben_position, {}, self.price.copy())
 
+    def get_cash_available(self):
+        self.value_hold = 0.0
+        for code in self.user_account.price.keys():  # 更新持仓市值, 如果持有的资产在价格里面, 更新资产价值
+            if code in self.user_account.position.keys():
+                self.value_hold += self.user_account.position[code] * self.price[code]
+        return self.user_account.value * self.s.risk_degree - self.value_hold
+
     def execute(self, data, verbose=0):
         # todo: 增加simulate模式
         """
@@ -118,14 +126,19 @@ class Executor:
             time = data['t'].unique()
             for t in time:
                 data_select = data[data['t'] == t]
-                signal = signal_generator.generate(data=data_select, strategy=self.s)
+                signal = signal_generator.generate(data=data_select, strategy=self.s,
+                                                   cash_available=Executor.get_cash_available(self))
                 order, current_price = signal["order"], signal["current_price"]
+
                 if verbose == 1:
                     print(order, '\n')
+
                 if self.s.auto_offset:
                     self.user_account.auto_offset(freq=self.s.offset_freq, cost_buy=self.cost_buy,
                                                   cost_sell=self.cost_sell, min_cost=self.min_cost)
+
                 trade = self.user_account.check_order(order, current_price)
+
                 self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
                                              cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)
                 self.user_account.risk_control(risk_degree=self.s.risk_degree, cost_rate=self.cost_sell,
