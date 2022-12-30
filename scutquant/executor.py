@@ -41,6 +41,16 @@ class Executor:
         :param sell_volume: 每次卖出的手数
         :param buy_only: 是否只允许做多并平仓
         """
+        keys = acc.keys()
+        if "cash" not in keys:
+            acc["cash"] = 1e9
+        if "position" not in keys:
+            acc["position"] = None
+        if "available" not in keys:
+            acc["available"] = None
+        if "ben_position" not in keys:
+            acc["ben_position"] = None
+
         self.mode = generator['mode']
 
         self.init_cash = acc['cash']
