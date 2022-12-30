@@ -44,33 +44,46 @@ import pandas as pd
 
 
 def ma(x, n):
-    return x.rolling(window=n).mean()
+    m = x.rolling(window=n).mean()
+    return m.sort_index().values
 
 
 def std(x, n):
-    return x.rolling(window=n).std()
+    s = x.rolling(window=n).std()
+    return s.sort_index().values
 
 
 def max_(x, n):
-    return x.rolling(window=n).max()
+    m = x.rolling(window=n).max()
+    return m.sort_index().values
 
 
 def min_(x, n):
-    return x.rolling(window=n).min()
+    m = x.rolling(window=n).min()
+    return m.sort_index().values
 
 
 def beta(x, n):
     # The rate of price change in the past d periods
-    return ((x.shift(n).fillna(x.mean()) + 1e-10) - x) / n
+    b = ((x.shift(n).fillna(x.mean()) + 1e-10) - x.shift(0)) / n
+    return b.sort_index().values
 
 
 def roc(x, n):
     # rate of change
-    return ((x.shift(n).fillna(x.mean()) + 1e-10) - x) / (x + 1e-10)
+    r = ((x.shift(n).fillna(x.mean()) + 1e-10) - x.shift(0)) / (x.shift(0) + 1e-10)
+    return r.sort_index().values
 
 
 def kmid(close, open, groupby, n):
     k = close.groupby([groupby]).rolling(n).mean() / open.groupby([groupby]).rolling(n).mean() - 1
+    return k.sort_index().values
+
+
+def kmid2(close, open, high, low, groupby, n):
+    k = close.groupby([groupby]).rolling(n).mean() - open.groupby([groupby]).rolling(n).mean()
+    hl = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean() + 1e-12
+    k = k / hl
     return k.sort_index().values
 
 
@@ -84,6 +97,14 @@ def ksft(close, open, high, low, groupby, n):
     k = 2 * close.groupby([groupby]).rolling(n).mean() - high.groupby([groupby]).rolling(n).mean() - \
         low.groupby([groupby]).rolling(n).mean()
     k = k / open.groupby([groupby]).rolling(n).mean()
+    return k.sort_index().values
+
+
+def ksft2(close, high, low, groupby, n):
+    k = 2 * close.groupby([groupby]).rolling(n).mean() - high.groupby([groupby]).rolling(n).mean() - \
+        low.groupby([groupby]).rolling(n).mean()
+    hl = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean() + 1e-12
+    k = k / hl
     return k.sort_index().values
 
 
@@ -167,7 +188,7 @@ def make_factors(kwargs, windows=None):
     {
         data: pd.DataFrame, 输入的数据
         price: str, 最新价格
-        last_close: str, 最近的收盘价（昨天或者其它）
+        open: str, 最近的收盘价（昨天或者其它）
         volume: str, 当前tick的交易量
         amount: str, 当前tick的交易额
         high: str, 当前tick的最高价
@@ -181,7 +202,7 @@ def make_factors(kwargs, windows=None):
     """
     df = kwargs['data']
     price = kwargs['price']
-    last_close = kwargs['last_close']
+    last_close = kwargs['open']
     volume = kwargs['volume']
     amount = kwargs['amount']
     high = kwargs['high']
@@ -194,46 +215,65 @@ def make_factors(kwargs, windows=None):
 
     X = pd.DataFrame()
     if label is not None:
+        data = df[label].groupby(groupby).shift(shift)
+        group = data.groupby([groupby])
+        for n in range(5):
+            X[label + str(n)] = group.shift(n)
         for w in windows:  # rolling windows
-            X['ma' + str(w)] = df[label].groupby([groupby]).shift(shift).groupby([groupby]).apply(lambda x: ma(x, w))
-            X['std' + str(w)] = df[label].groupby([groupby]).shift(shift).groupby([groupby]).apply(lambda x: std(x, w))
-            X['max' + str(w)] = df[label].groupby([groupby]).shift(shift).groupby([groupby]).apply(lambda x: max_(x, w))
-            X['min' + str(w)] = df[label].groupby([groupby]).shift(shift).groupby([groupby]).apply(lambda x: min_(x, w))
-            X['beta' + str(w)] = df[label].groupby([groupby]).shift(shift).groupby([groupby]).apply(
-                lambda x: beta(x, w))
-            X['roc' + str(w)] = df[label].groupby([groupby]).shift(shift).groupby([groupby]).apply(lambda x: roc(x, w))
+            X['ma' + str(w)] = ma(group, w)
+            X['std' + str(w)] = std(group, w)
+            X['max' + str(w)] = max_(group, w)
+            X['min' + str(w)] = min_(group, w)
+            X['beta' + str(w)] = beta(group, w)
+            X['roc' + str(w)] = roc(group, w)
 
     if price is not None:
+        group = df[price].groupby([groupby])
+        for n in range(5):
+            X[price + str(n)] = group.shift(n).sort_index().values
         for w in windows:
-            X['MA' + str(w)] = df[price].groupby([groupby]).apply(lambda x: ma(x, w))
-            X['STD' + str(w)] = df[price].groupby([groupby]).apply(lambda x: std(x, w))
-            X['MAX' + str(w)] = df[price].groupby([groupby]).apply(lambda x: max_(x, w))
-            X['MIN' + str(w)] = df[price].groupby([groupby]).apply(lambda x: min_(x, w))
-            X['BETA' + str(w)] = df[price].groupby([groupby]).apply(lambda x: beta(x, w))
-            X['ROC' + str(w)] = df[price].groupby([groupby]).apply(lambda x: roc(x, w))
+            X['MA' + str(w)] = ma(group, w)
+            X['STD' + str(w)] = std(group, w)
+            X['MAX' + str(w)] = max_(group, w)
+            X['MIN' + str(w)] = min_(group, w)
+            X['BETA' + str(w)] = beta(group, w)
+            X['ROC' + str(w)] = roc(group, w)
 
     if volume is not None:
+        group = df[volume].groupby([groupby])
+        for n in range(5):
+            X[volume + str(n)] = group.shift(n).sort_index().values
         for w in windows:
-            X['vma' + str(w)] = df[volume].groupby([groupby]).apply(lambda x: ma(x, w))
-            X['vstd' + str(w)] = df[volume].groupby([groupby]).apply(lambda x: std(x, w))
+            X['vma' + str(w)] = ma(group, w)
+            X['vstd' + str(w)] = std(group, w)
         if amount is not None:
             for w in windows:
                 X['vwap' + str(w)] = vwap(df[amount], df[volume], groupby=groupby, n=w)
 
     if (last_close is not None) and (price is not None):
+        group = df[last_close].groupby([groupby])
+        for n in range(5):
+            X[last_close + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['risk' + str(w)] = risk(df[price], df[last_close], groupby=groupby, n=w)
             X['kmid' + str(w)] = kmid(df[price], df[last_close], groupby=groupby, n=w)
         if (high is not None) and (low is not None):
             for w in windows:
                 X['ksft' + str(w)] = ksft(df[price], df[last_close], df[high], df[low], groupby=groupby, n=w)
+                X['kmid2' + str(w)] = kmid2(df[price], df[last_close], df[high], df[low], groupby, w)
 
     if (high is not None) and (low is not None):
+        group_h = df[high].groupby([groupby])
+        group_l = df[low].groupby([groupby])
+        for n in range(5):
+            X[high + str(n)] = group_h.shift(n).sort_index().values
+            X[low + str(n)] = group_l.shift(n).sort_index().values
         for w in windows:
             X['hml' + str(w)] = hml(df[high], df[low], groupby=groupby, n=w)
         if price is not None:
             for w in windows:
                 X['rsv' + str(w)] = rsv(df[price], df[high], df[low], groupby=groupby, n=w)
+                X['ksft2' + str(w)] = ksft2(df[price], df[high], df[low], groupby, w)
         if last_close is not None:
             for w in windows:
                 X['klen' + str(w)] = klen(df[high], df[low], df[last_close], groupby=groupby, n=w)
@@ -248,7 +288,7 @@ def make_factors_series(kwargs, windows=None):
     {
         data: pd.DataFrame, 输入的数据
         price: str, 最新价格
-        last_close: str, 最近的收盘价（昨天或者其它）
+        open: str, 最近的收盘价（昨天或者其它）
         volume: str, 当前tick的交易量
         amount: str, 当前tick的交易额
         high: str, 当前tick的最高价
@@ -261,7 +301,7 @@ def make_factors_series(kwargs, windows=None):
     """
     df = kwargs['data']
     price = kwargs['price']
-    last_close = kwargs['last_close']
+    last_close = kwargs['open']
     volume = kwargs['volume']
     amount = kwargs['amount']
     high = kwargs['high']
