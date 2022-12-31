@@ -10,8 +10,7 @@ def get_volume(asset, price=None, cash_available=None, num=10, unit=None):
             for i in range(len(n)):
                 n[i] = n[i] * 100
     else:
-
-        invest = cash_available / len(asset)
+        invest = cash_available / len(asset) if len(asset) != 0 else 0
         n = []
         if unit == 'lot':
             for a in asset:
@@ -94,7 +93,7 @@ class BaselineStrategy(BaseStrategy):
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
         if "trade_volume" not in kwargs.keys():
-            kwargs["volume"] = 10
+            kwargs["volume"] = 50
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -127,7 +126,7 @@ class BaselineStrategy(BaseStrategy):
         if self.buy_only:
             sell_dict = {}
         else:
-            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, price=price, cash_available=cash_available)
+            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, price=price, cash_available=None)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
@@ -158,7 +157,7 @@ class TopKStrategy(BaseStrategy):
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
         if "trade_volume" not in kwargs.keys():
-            kwargs["volume"] = 10
+            kwargs["volume"] = 50
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -186,7 +185,67 @@ class TopKStrategy(BaseStrategy):
         if self.buy_only:
             sell_dict = {}
         else:
-            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price)
+            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, cash_available=None, price=price)
+
+        buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
+        order = {
+            'buy': buy_dict,
+            'sell': sell_dict
+        }
+        return order, price
+
+
+class StrictTopKStrategy(BaseStrategy):
+    """
+    做多Group1中收益率大于buy的股票，做空Group5中收益率小于sell的股票
+    """
+    def __init__(self, kwargs=None):
+        super().__init__()
+        if "k" not in kwargs.keys():
+            kwargs["k"] = 0.2
+        if "buy" not in kwargs.keys():
+            kwargs["buy"] = 0.005  # 预测收益率超过0.5%则买入. 如果模型是二分类模型，把它设为1即可. kwargs["sell"]同理(设为-1)
+        if "sell" not in kwargs.keys():
+            kwargs["sell"] = -0.005
+        if "auto_offset" not in kwargs.keys():
+            kwargs["auto_offset"] = False
+        if "offset_freq" not in kwargs.keys():
+            kwargs["offset_freq"] = 1
+        if "buy_only" not in kwargs.keys():
+            kwargs["buy_only"] = False
+        if "trade_volume" not in kwargs.keys():
+            kwargs["volume"] = 50
+        if "unit" not in kwargs.keys():
+            kwargs["unit"] = "lot"
+        if "risk_degree" not in kwargs.keys():
+            kwargs["risk_degree"] = 0.95
+
+        self.k = kwargs["k"]
+        self.buy = kwargs["buy"]
+        self.sell = kwargs["sell"]
+        self.auto_offset = kwargs["auto_offset"]
+        self.offset_freq = kwargs["offset_freq"]
+        self.buy_only = kwargs["buy_only"]
+        self.num = kwargs["volume"]
+        self.unit = kwargs["unit"]
+        self.risk_degree = kwargs["risk_degree"]
+
+    def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
+        price = get_price(data, "price")
+        n_k = int(len(data) * self.k + 0.5)
+        data_ = data.copy().sort_values("predict", ascending=False)
+
+        data_buy = data_.head(n_k)
+        data_buy = data_buy[data_buy["predict"] >= self.buy]
+        buy_list = get_assets_list(data_buy, index_level)
+        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price)
+
+        sell_dict = {}
+        if not self.buy_only:
+            data_sell = data_.tail(n_k)
+            data_sell = data_sell[data_sell["predict"] <= self.sell]
+            sell_list = get_assets_list(data_sell, index_level)
+            sell_dict = trade(sell_list, num=self.num, unit=self.unit, cash_available=None, price=price)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {

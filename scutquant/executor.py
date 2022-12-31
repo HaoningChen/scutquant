@@ -59,12 +59,8 @@ class Executor:
         self.cost_sell = trade_params["cost_sell"]
         self.min_cost = trade_params["min_cost"]
 
-        if stra["class"] == "BaselineStrategy":
-            self.s = strategy.BaselineStrategy(stra["kwargs"])
-        elif stra["class"] == "TopKStrategy":
-            self.s = strategy.TopKStrategy(stra["kwargs"])
-        else:
-            self.s = None
+        self.s = getattr(strategy, stra["class"])
+        self.s = self.s(stra["kwargs"])
 
     def init_account(self, data):
         """
