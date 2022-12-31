@@ -162,7 +162,7 @@ def rsv_series(price, high, low, n):
     return r.values
 
 
-def make_factors(kwargs=None, windows=None):
+def make_factors(kwargs=None, windows=None, raw_data=10):
     """
     面板数据适用，序列数据请移步 make_factors_series
 
@@ -200,6 +200,7 @@ def make_factors(kwargs=None, windows=None):
         groupby: str, 排序的标准（一般为'code'）
     }
     :param windows: list, 移动窗口的列表
+    :param raw_data: 原始数据的滞后项
     :return: pd.DataFrame
     """
     if kwargs is None:
@@ -252,7 +253,7 @@ def make_factors(kwargs=None, windows=None):
 
     if price is not None:
         group = df[price].groupby([groupby])
-        for n in range(15):
+        for n in range(raw_data):
             X[price + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['MA' + str(w)] = ma(group, w)
@@ -264,7 +265,7 @@ def make_factors(kwargs=None, windows=None):
 
     if volume is not None:
         group = df[volume].groupby([groupby])
-        for n in range(15):
+        for n in range(raw_data):
             X[volume + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['vma' + str(w)] = ma(group, w)
@@ -287,7 +288,7 @@ def make_factors(kwargs=None, windows=None):
     if (high is not None) and (low is not None):
         group_h = df[high].groupby([groupby])
         group_l = df[low].groupby([groupby])
-        for n in range(15):
+        for n in range(raw_data):
             X[high + str(n)] = group_h.shift(n).sort_index().values
             X[low + str(n)] = group_l.shift(n).sort_index().values
         for w in windows:
