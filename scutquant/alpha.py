@@ -240,7 +240,7 @@ def make_factors(kwargs=None, windows=None):
     if label is not None:
         data = df[label].groupby(groupby).shift(shift)
         group = data.groupby([groupby])
-        for n in range(10):
+        for n in range(15):
             X[label + str(n)] = group.shift(n)
         for w in windows:  # rolling windows
             X['ma' + str(w)] = ma(group, w)
@@ -252,7 +252,7 @@ def make_factors(kwargs=None, windows=None):
 
     if price is not None:
         group = df[price].groupby([groupby])
-        for n in range(10):
+        for n in range(15):
             X[price + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['MA' + str(w)] = ma(group, w)
@@ -264,7 +264,7 @@ def make_factors(kwargs=None, windows=None):
 
     if volume is not None:
         group = df[volume].groupby([groupby])
-        for n in range(10):
+        for n in range(15):
             X[volume + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['vma' + str(w)] = ma(group, w)
@@ -275,7 +275,7 @@ def make_factors(kwargs=None, windows=None):
 
     if (last_close is not None) and (price is not None):
         group = df[last_close].groupby([groupby])
-        for n in range(10):
+        for n in range(15):
             X[last_close + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             # X['risk' + str(w)] = risk(df[price], df[last_close], groupby=groupby, n=w)
@@ -287,7 +287,7 @@ def make_factors(kwargs=None, windows=None):
     if (high is not None) and (low is not None):
         group_h = df[high].groupby([groupby])
         group_l = df[low].groupby([groupby])
-        for n in range(10):
+        for n in range(15):
             X[high + str(n)] = group_h.shift(n).sort_index().values
             X[low + str(n)] = group_l.shift(n).sort_index().values
         for w in windows:

@@ -18,6 +18,7 @@ def prepare(predict, data, time, price):
     predict['t'] = data1['t']
     predict['price'] = data1[price]
     predict.index.names = ['time', 'code']
+    predict["price"] = predict["price"].groupby(["code"]).shift(-1)
     return predict
 
 

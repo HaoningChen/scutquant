@@ -110,13 +110,12 @@ class Account:
         """
         example: 对某只股票的买入记录为[4, 1, 1, 2, 3], 假设买入后2个tick平仓, 则自动平仓应为[nan, nan, 4, 1, 1]
 
-        :param freq: 多少个tick后平仓
+        :param freq: 多少个tick后平仓, 例如收益率构建方式为close_-2 / close_-1 - 1, delta_t=1, 所以是1tick后平仓
         :param cost_buy: 买入费率
         :param cost_sell: 卖出费率
         :param min_cost: 最小交易费用
         :return:
         """
-        freq += 1
         if len(self.buy_hist) >= freq:
             offset_buy = self.sell_hist[-freq]
             offset_sell = self.buy_hist[-freq]
