@@ -1,9 +1,18 @@
-def get_volume(asset, price=None, cash_available=None, num=10, unit=None):
+def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None):
     """
     生成每笔交易的交易量
-
+    :param asset: list
+    :param price: dict {"code": price}
+    :param volume: dict {"code": volume}
+    :param cash_available: float
+    :param num: int, default volume
+    :param unit: string, "lot" or None
     :return: int, 交易量, 单位是允许交易的最小单位
     """
+    max_volume = {}
+    if volume is not None:
+        for k in volume.keys():
+            max_volume[k] = volume[k] * 0.0005
     if (price is None) or (cash_available is None):
         n = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等
         if unit == 'lot':
@@ -14,27 +23,29 @@ def get_volume(asset, price=None, cash_available=None, num=10, unit=None):
         n = []
         if unit == 'lot':
             for a in asset:
-                # 考虑到大单不一定成交，最大不超过500手
-                n.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= 500 else 500)
+                # 考虑到大单不一定成交，最大不超过max_volume手
+                n.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= max_volume[a]
+                         else max_volume[a])
             for i in range(len(n)):
                 n[i] = n[i] * 100
         else:
             for a in asset:
-                # 考虑到大单不一定成交，最大不超过500手, 即50000股
-                n.append(int(invest / price[a]) if int(invest / price[a]) <= 50000 else 50000)
+                # 考虑到大单不一定成交，最大不超过max_volume手, 即max_volume * 100股
+                n.append(int(invest / price[a]) if int(invest / price[a]) <= max_volume[a] else max_volume[a])
     return n
 
 
-def trade(code, num=10, unit=None, price=None, cash_available=None):
+def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None):
     """
     :param code: code of assets to be traded
     :param num: number of units
     :param unit: 'lot' or else
-    :param price: dict, 当前资产价格
+    :param price: dict, 资产价格
+    :param volume: 资产的可交易数量
     :param cash_available: float or int
     :return: dict like {'code': volume}
     """
-    vol = get_volume(asset=code, price=price, cash_available=cash_available, num=num, unit=unit)
+    vol = get_volume(asset=code, price=price, volume=volume, cash_available=cash_available, num=num, unit=unit)
     kwargs = dict(zip(code, vol))
     return kwargs
 
@@ -49,6 +60,11 @@ def get_assets_list(data, index_level):
 def get_price(data, price="price"):
     current_price = data.droplevel(0)[price].to_dict()
     return current_price
+
+
+def get_vol(data, volume="volume"):
+    current_volume = data.droplevel(0)[volume].to_dict()
+    return current_volume
 
 
 def check_signal(order):
@@ -119,14 +135,17 @@ class BaselineStrategy(BaseStrategy):
         data_buy = data[data[pred].values >= self.buy]
         data_sell = data[data[pred].values <= self.sell]
         price = get_price(data, "price")
+        volume = get_vol(data, "volume")
 
         buy_list, sell_list = get_assets_list(data_buy, index_level), get_assets_list(data_sell, index_level)
 
-        buy_dict = trade(code=buy_list, num=self.num, unit=self.unit, price=price, cash_available=cash_available)
+        buy_dict = trade(code=buy_list, num=self.num, unit=self.unit, price=price, volume=volume,
+                         cash_available=cash_available)
         if self.buy_only:
             sell_dict = {}
         else:
-            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, price=price, cash_available=None)
+            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, price=price, volume=volume,
+                              cash_available=None)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
@@ -178,14 +197,17 @@ class TopKStrategy(BaseStrategy):
         data_buy = data_.head(n_k)
         data_sell = data_.tail(n_k)
         price = get_price(data, "price")
+        volume = get_vol(data, "volume")
 
         buy_list, sell_list = get_assets_list(data_buy, index_level), get_assets_list(data_sell, index_level)
 
-        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price)
+        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price,
+                         volume=volume)
         if self.buy_only:
             sell_dict = {}
         else:
-            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, cash_available=None, price=price)
+            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, cash_available=None, price=price,
+                              volume=volume)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
@@ -199,6 +221,7 @@ class StrictTopKStrategy(BaseStrategy):
     """
     做多Group1中收益率大于buy的股票，做空Group5中收益率小于sell的股票
     """
+
     def __init__(self, kwargs=None):
         super().__init__()
         if "k" not in kwargs.keys():
@@ -232,20 +255,22 @@ class StrictTopKStrategy(BaseStrategy):
 
     def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
         price = get_price(data, "price")
+        volume = get_vol(data, "volume")
         n_k = int(len(data) * self.k + 0.5)
         data_ = data.copy().sort_values("predict", ascending=False)
 
         data_buy = data_.head(n_k)
         data_buy = data_buy[data_buy["predict"] >= self.buy]
         buy_list = get_assets_list(data_buy, index_level)
-        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price)
+        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price,
+                         volume=volume)
 
         sell_dict = {}
         if not self.buy_only:
             data_sell = data_.tail(n_k)
             data_sell = data_sell[data_sell["predict"] <= self.sell]
             sell_list = get_assets_list(data_sell, index_level)
-            sell_dict = trade(sell_list, num=self.num, unit=self.unit, cash_available=None, price=price)
+            sell_dict = trade(sell_list, num=self.num, unit=self.unit, cash_available=None, price=price, volume=volume)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {

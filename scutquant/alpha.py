@@ -373,3 +373,66 @@ def make_factors_series(kwargs, windows=None):
         for w in windows:
             X['rsv' + str(w)] = rsv_series(df[price], df[high], df[low], n=w)
     return X
+
+
+def alpha360(kwargs, shift=60):
+    if kwargs is None:
+        kwargs = {}
+    if "data" not in kwargs.keys():
+        kwargs["data"] = pd.DataFrame()
+    if "price" not in kwargs.keys():
+        kwargs["price"] = "close"
+    if "open" not in kwargs.keys():
+        kwargs["open"] = "open"
+    if "volume" not in kwargs.keys():
+        kwargs["volume"] = "volume"
+    if "amount" not in kwargs.keys():
+        kwargs["amount"] = "amount"
+    if "high" not in kwargs.keys():
+        kwargs["high"] = "high"
+    if "low" not in kwargs.keys():
+        kwargs["low"] = "low"
+    if "groupby" not in kwargs.keys():
+        kwargs["groupby"] = "code"
+
+    data = kwargs["data"]
+    open = kwargs["open"]
+    close = kwargs["close"]
+    volume = kwargs['volume']
+    amount = kwargs['amount']
+    high = kwargs['high']
+    low = kwargs['low']
+    groupby = kwargs["groupby"]
+
+    X = pd.DataFrame()
+    if open is not None:
+        group = data[open].groupby(groupby)
+        for i in range(1, shift + 1):
+            X[open + str(i)] = group.shift(i)
+
+    if close is not None:
+        group = data[close].groupby(groupby)
+        for i in range(1, shift + 1):
+            X[close + str(i)] = group.shift(i)
+
+    if high is not None:
+        group = data[high].groupby(groupby)
+        for i in range(1, shift + 1):
+            X[high + str(i)] = group.shift(i)
+
+    if low is not None:
+        group = data[low].groupby(groupby)
+        for i in range(1, shift + 1):
+            X[low + str(i)] = group.shift(i)
+
+    if volume is not None:
+        group = data[volume].groupby(groupby)
+        for i in range(1, shift + 1):
+            X[volume + str(i)] = group.shift(i)
+
+    if amount is not None:
+        group = data[amount].groupby(groupby)
+        for i in range(1, shift+1):
+            X[amount + str(i)] = group.shift(i)
+
+    return X

@@ -1,22 +1,25 @@
 from . import account, signal_generator, strategy  # 别动这行！
 
 
-def prepare(predict, data, time, price):
+def prepare(predict, data, time, price, volume):
     """
     :param predict: pd.DataFrame, 预测值, 应包括"predict"
     :param data: pd.DataFrame, 提供时间和价格信息
     :param time: str, data中表示时间的列名
     :param price: str, data中表示价格的列名
+    :param volume: str, data中表示成交量的列名
     :return: pd.DataFrame
     """
+    data_ = data.copy()
     predict.columns = ['predict']
     index = predict.index
-    data1 = data[data.index.isin(index)]
+    data1 = data_[data_.index.isin(index)]
     data1 = data1.reset_index()
     data1['t'] = data1[time]
     data1 = data1.set_index(predict.index.names).sort_index()
     predict['t'] = data1['t']
     predict['price'] = data1[price]
+    predict['volume'] = data1[volume]
     predict.index.names = ['time', 'code']
     predict["price"] = predict["price"].groupby(["code"]).shift(-1)
     return predict.dropna()
@@ -122,6 +125,7 @@ class Executor:
         if self.mode == 'generate':
             time = data['t'].unique()
             for t in time:
+                self.time.append(t)
                 data_select = data[data['t'] == t]
                 signal = signal_generator.generate(data=data_select, strategy=self.s,
                                                    cash_available=Executor.get_cash_available(self))

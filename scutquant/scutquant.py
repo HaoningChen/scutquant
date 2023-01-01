@@ -6,6 +6,7 @@ import math
 import xgboost
 from scipy.signal import periodogram
 from statsmodels.graphics.tsaplots import plot_pacf
+import lightgbm as lgb
 
 
 def join_data(data, data_join, time='datetime', col=None, index=None):
@@ -410,6 +411,13 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
     show_dist(y_train)
     show_dist(y_test)
 
+    if select:
+        mi_score = make_mi_scores(X_train, y_train)
+        print(mi_score)
+        print(mi_score.describe())
+        X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
+        X_test = feature_selector(X_test, mi_score)
+
     if norm == 'z':
         mean, std = X_train.mean(), X_train.std()
         X_train = zscorenorm(X_train)
@@ -449,12 +457,6 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
             X_test = make_pca(X_test)
             # print(X_test.head(5))
             print('PCA done')
-    if select:
-        mi_score = make_mi_scores(X_train, y_train)
-        print(mi_score)
-        print(mi_score.describe())
-        X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
-        X_test = feature_selector(X_test, mi_score)
     # print(X_train.describe())
     print('all works done', '\n')
     return X_train, X_test, y_train, y_test, ymean, ystd
@@ -584,6 +586,39 @@ class hybrid:
         coef = self.lin_model.coef_
         c = pd.Series(coef, index=index).sort_values(ascending=False)
         print(c)
+
+
+def auto_lgbm(x_train, y_train, x_valid, y_valid, early_stopping=30, verbose_eval=20, lgb_params=None,
+              num_boost_round=1000, evals_result=None):
+    if evals_result is None:
+        evals_result = {}
+    if lgb_params is None:
+        lgb_params = {
+            "loss": "mse",
+            "colsample_bytree": 0.8879,
+            "learning_rate": 0.0421,
+            "subsample": 0.8789,
+            "lambda_l1": 205.6999,
+            "lambda_l2": 580.9768,
+            "max_depth": 8,
+            "num_leaves": 210,
+            "num_threads": 20,
+            "verbosity": -1
+        }
+    dtrain = lgb.Dataset(x_train, label=y_train)
+    dvalid = lgb.Dataset(x_valid, label=y_valid)
+    early_stopping_callback = lgb.early_stopping(early_stopping)
+    verbose_eval_callback = lgb.log_evaluation(period=verbose_eval)
+    evals_result_callback = lgb.record_evaluation(evals_result)
+    model = lgb.train(
+        params=lgb_params,
+        train_set=dtrain,
+        num_boost_round=num_boost_round,
+        valid_sets=[dtrain, dvalid],
+        valid_names=["train", "valid"],
+        callbacks=[early_stopping_callback, verbose_eval_callback, evals_result_callback],
+    )
+    return model
 
 
 ####################################################
