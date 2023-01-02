@@ -1,4 +1,4 @@
-def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None):
+def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None, max_volume=0.001):
     """
     生成每笔交易的交易量
     :param asset: list
@@ -7,12 +7,13 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
     :param cash_available: float
     :param num: int, default volume
     :param unit: string, "lot" or None
+    :param max_volume: float, 最大交易手数是volume的max_volume倍
     :return: int, 交易量, 单位是允许交易的最小单位
     """
-    max_volume = {}
+    max_vol = {}
     if volume is not None:
         for k in volume.keys():
-            max_volume[k] = volume[k] * 0.0005
+            max_vol[k] = volume[k] * max_volume
     if (price is None) or (cash_available is None):
         n = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等
         if unit == 'lot':
@@ -24,18 +25,18 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
         if unit == 'lot':
             for a in asset:
                 # 考虑到大单不一定成交，最大不超过max_volume手
-                n.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= max_volume[a]
-                         else max_volume[a])
+                n.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= max_vol[a]
+                         else max_vol[a])
             for i in range(len(n)):
                 n[i] = n[i] * 100
         else:
             for a in asset:
                 # 考虑到大单不一定成交，最大不超过max_volume手, 即max_volume * 100股
-                n.append(int(invest / price[a]) if int(invest / price[a]) <= max_volume[a] else max_volume[a])
+                n.append(int(invest / price[a]) if int(invest / price[a]) <= max_vol[a] else max_vol[a])
     return n
 
 
-def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None):
+def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.001):
     """
     :param code: code of assets to be traded
     :param num: number of units
@@ -43,9 +44,11 @@ def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None)
     :param price: dict, 资产价格
     :param volume: 资产的可交易数量
     :param cash_available: float or int
+    :param max_volume: float, 最大交易手数是volume的max_volume倍
     :return: dict like {'code': volume}
     """
-    vol = get_volume(asset=code, price=price, volume=volume, cash_available=cash_available, num=num, unit=unit)
+    vol = get_volume(asset=code, price=price, volume=volume, cash_available=cash_available, num=num, unit=unit,
+                     max_volume=max_volume)
     kwargs = dict(zip(code, vol))
     return kwargs
 
@@ -114,6 +117,8 @@ class BaselineStrategy(BaseStrategy):
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
+        if "max_volume" not in kwargs.keys():
+            kwargs["max_volume"] = 0.001
 
         self.buy = kwargs["buy"]
         self.sell = kwargs["sell"]
@@ -123,6 +128,7 @@ class BaselineStrategy(BaseStrategy):
         self.num = kwargs["volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
+        self.max_volume = kwargs["max_volume"]
 
     def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
         """
@@ -140,12 +146,12 @@ class BaselineStrategy(BaseStrategy):
         buy_list, sell_list = get_assets_list(data_buy, index_level), get_assets_list(data_sell, index_level)
 
         buy_dict = trade(code=buy_list, num=self.num, unit=self.unit, price=price, volume=volume,
-                         cash_available=cash_available)
+                         cash_available=cash_available, max_volume=self.max_volume)
         if self.buy_only:
             sell_dict = {}
         else:
             sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, price=price, volume=volume,
-                              cash_available=None)
+                              cash_available=None, max_volume=self.max_volume)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
@@ -181,6 +187,8 @@ class TopKStrategy(BaseStrategy):
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
+        if "max_volume" not in kwargs.keys():
+            kwargs["max_volume"] = 0.001
 
         self.k = kwargs["k"]
         self.auto_offset = kwargs["auto_offset"]
@@ -189,6 +197,7 @@ class TopKStrategy(BaseStrategy):
         self.num = kwargs["volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
+        self.max_volume = kwargs["max_volume"]
 
     def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
         n_k = int(len(data) * self.k + 0.5)
@@ -202,12 +211,12 @@ class TopKStrategy(BaseStrategy):
         buy_list, sell_list = get_assets_list(data_buy, index_level), get_assets_list(data_sell, index_level)
 
         buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price,
-                         volume=volume)
+                         volume=volume, max_volume=self.max_volume)
         if self.buy_only:
             sell_dict = {}
         else:
             sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, cash_available=None, price=price,
-                              volume=volume)
+                              volume=volume, max_volume=self.max_volume)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
@@ -242,6 +251,8 @@ class StrictTopKStrategy(BaseStrategy):
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
+        if "max_volume" not in kwargs.keys():
+            kwargs["max_volume"] = 0.001
 
         self.k = kwargs["k"]
         self.buy = kwargs["buy"]
@@ -252,6 +263,7 @@ class StrictTopKStrategy(BaseStrategy):
         self.num = kwargs["volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
+        self.max_volume = kwargs["max_volume"]
 
     def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
         price = get_price(data, "price")
@@ -263,14 +275,15 @@ class StrictTopKStrategy(BaseStrategy):
         data_buy = data_buy[data_buy["predict"] >= self.buy]
         buy_list = get_assets_list(data_buy, index_level)
         buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price,
-                         volume=volume)
+                         volume=volume, max_volume=self.max_volume)
 
         sell_dict = {}
         if not self.buy_only:
             data_sell = data_.tail(n_k)
             data_sell = data_sell[data_sell["predict"] <= self.sell]
             sell_list = get_assets_list(data_sell, index_level)
-            sell_dict = trade(sell_list, num=self.num, unit=self.unit, cash_available=None, price=price, volume=volume)
+            sell_dict = trade(sell_list, num=self.num, unit=self.unit, cash_available=None, price=price, volume=volume,
+                              max_volume=self.max_volume)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
