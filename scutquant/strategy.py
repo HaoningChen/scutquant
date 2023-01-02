@@ -13,7 +13,7 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
     max_vol = {}
     if volume is not None:
         for k in volume.keys():
-            max_vol[k] = volume[k] * max_volume
+            max_vol[k] = int(volume[k] * max_volume + 0.5)
     if (price is None) or (cash_available is None):
         n = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等
         if unit == 'lot':
