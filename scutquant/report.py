@@ -187,4 +187,4 @@ def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):
         label.append(c)
         win_rate.append(len(t_df[t_df[c] >= 0]) / len(t_df))
     plot(data, label, title='Grouped Return', xlabel='time_id', ylabel='value', figsize=figsize)
-    plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar")
+    plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar", figsize=figsize)
