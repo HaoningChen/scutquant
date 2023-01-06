@@ -3,6 +3,8 @@
 
 如果有任何的意见和建议，欢迎在issue区留言或者直接提pr！
 
+纯代码版本请转到[scutquant_pure](https://github.com/chn489/scutquant_pure)
+
 **导航**
 
 
