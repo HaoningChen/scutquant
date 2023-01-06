@@ -1,4 +1,4 @@
-def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None, max_volume=0.001):
+def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None, max_volume=0.002):
     """
     生成每笔交易的交易量
     :param asset: list
@@ -36,7 +36,7 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
     return n
 
 
-def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.001):
+def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.002):
     """
     :param code: code of assets to be traded
     :param num: number of units
@@ -210,13 +210,13 @@ class TopKStrategy(BaseStrategy):
 
         buy_list, sell_list = get_assets_list(data_buy, index_level), get_assets_list(data_sell, index_level)
 
-        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price,
-                         volume=volume, max_volume=self.max_volume)
+        buy_dict = trade(buy_list, num=self.num, unit=self.unit, price=price, volume=volume,
+                         cash_available=cash_available, max_volume=self.max_volume)
         if self.buy_only:
             sell_dict = {}
         else:
-            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, cash_available=None, price=price,
-                              volume=volume, max_volume=self.max_volume)
+            sell_dict = trade(code=sell_list, num=self.num, unit=self.unit, price=price, volume=volume,
+                              cash_available=None, max_volume=self.max_volume)
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
@@ -272,19 +272,84 @@ class StrictTopKStrategy(BaseStrategy):
         data_ = data.copy().sort_values("predict", ascending=False)
 
         data_buy = data_.head(n_k)
-        data_buy = data_buy[data_buy["predict"] >= self.buy]
+        data_buy = data_buy[data_buy[pred] >= self.buy]
         buy_list = get_assets_list(data_buy, index_level)
-        buy_dict = trade(buy_list, num=self.num, unit=self.unit, cash_available=cash_available, price=price,
-                         volume=volume, max_volume=self.max_volume)
+        buy_dict = trade(buy_list, num=self.num, unit=self.unit, price=price, volume=volume,
+                         cash_available=cash_available, max_volume=self.max_volume)
 
         sell_dict = {}
         if not self.buy_only:
             data_sell = data_.tail(n_k)
-            data_sell = data_sell[data_sell["predict"] <= self.sell]
+            data_sell = data_sell[data_sell[pred] <= self.sell]
             sell_list = get_assets_list(data_sell, index_level)
-            sell_dict = trade(sell_list, num=self.num, unit=self.unit, cash_available=None, price=price, volume=volume,
+            sell_dict = trade(sell_list, num=self.num, unit=self.unit, price=price, volume=volume, cash_available=None,
                               max_volume=self.max_volume)
 
+        buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
+        order = {
+            'buy': buy_dict,
+            'sell': sell_dict
+        }
+        return order, price
+
+
+class SigmaStrategy(BaseStrategy):
+    def __init__(self, kwargs=None):
+        super().__init__()
+        keys = kwargs.keys()
+        if "sigma" not in keys:
+            kwargs["sigma"] = 2
+        if "buy" not in keys:
+            kwargs["buy"] = 0
+        if "sell" not in keys:
+            kwargs["sell"] = -0
+        if "auto_offset" not in kwargs.keys():
+            kwargs["auto_offset"] = False
+        if "offset_freq" not in kwargs.keys():
+            kwargs["offset_freq"] = 1
+        if "buy_only" not in kwargs.keys():
+            kwargs["buy_only"] = False
+        if "trade_volume" not in kwargs.keys():
+            kwargs["volume"] = 50
+        if "unit" not in kwargs.keys():
+            kwargs["unit"] = "lot"
+        if "risk_degree" not in kwargs.keys():
+            kwargs["risk_degree"] = 0.95
+        if "max_volume" not in kwargs.keys():
+            kwargs["max_volume"] = 0.002
+
+        self.sigma = kwargs["sigma"]
+        self.buy = kwargs["buy"]
+        self.sell = kwargs["sell"]
+        self.auto_offset = kwargs["auto_offset"]
+        self.offset_freq = kwargs["offset_freq"]
+        self.buy_only = kwargs["buy_only"]
+        self.num = kwargs["volume"]
+        self.unit = kwargs["unit"]
+        self.risk_degree = kwargs["risk_degree"]
+        self.max_volume = kwargs["max_volume"]
+
+    def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
+        price = get_price(data, "price")
+        volume = get_vol(data, "volume")
+        mean = data[pred].values.mean()
+        std = data[pred].values.std()
+
+        buy_ = self.sigma * std + mean
+        data_buy = data[data[pred] >= buy_]
+        data_buy = data_buy[data_buy[pred] >= self.buy]
+        buy_list = get_assets_list(data_buy, index_level)
+        buy_dict = trade(buy_list, num=self.num, unit=self.unit, price=price, volume=volume,
+                         cash_available=cash_available, max_volume=self.max_volume)
+
+        sell_dict = {}
+        if not self.buy_only:
+            sell_ = mean - self.sigma * std
+            data_sell = data[data[pred] <= sell_]
+            data_sell = data_sell[data_sell[pred] <= self.sell]
+            sell_list = get_assets_list(data_sell, index_level)
+            sell_dict = trade(sell_list, num=self.num, unit=self.unit, price=price, volume=volume, cash_available=None,
+                              max_volume=self.max_volume)
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
             'buy': buy_dict,
