@@ -121,9 +121,9 @@ class Account:
         # 更新市场价格、交易记录、持仓和可交易数量、交易费用和现金，市值
         # order的Key不一定要包括所有资产，但必须是position的子集
         Account.update_price(self, price)  # 首先更新市场价格
-        Account.update_trade_hist(self, order)  # 然后更新交易记录
         if order is not None:
             if trade:
+                Account.update_trade_hist(self, order)  # 然后更新交易记录
                 Account.sell(self, order['sell'], cost_buy, min_cost)
                 Account.buy(self, order['buy'], cost_sell, min_cost)
         Account.update_value(self)
