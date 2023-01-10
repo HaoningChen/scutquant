@@ -46,8 +46,9 @@ def join_data(data, data_join, time='datetime', col=None, index=None):
                     d_list.append(data_join_choosed)
                 idx += 1
             data[c] = d_list
-
     data.set_index(index, inplace=True)
+    if 'index' in data.columns:
+        data = data.drop('index', axis=1)
     return data
 
 
@@ -74,7 +75,8 @@ def join_data_by_code(data, data_join, code='instrument', col=None, index=None):
             data_ = data_join[data_join[code] == i][col[c]].values[0]
             data.loc[ind, col[c]] = data_
     data.set_index(index, inplace=True)
-    data = data.drop('index', axis=1)
+    if 'index' in data.columns:
+        data = data.drop('index', axis=1)
     return data
 
 
