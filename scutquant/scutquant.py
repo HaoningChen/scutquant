@@ -656,12 +656,9 @@ def ic_ana(pred, y, groupby=None, freq=1, plot=True):
     :return: float, 依次为ic均值, icir, rank_ic均值和rank_icir
     """
     if groupby is not None:
-        IC = pd.concat([pred, y], axis=1).groupby([groupby])
-        ic = IC.corr().iloc[:, 0]
-        ic = ic[[i % 2 == 1 for i in range(len(ic.index))]]
-        # print('ic:', ic)
-        rank_ic = IC.corr(method='spearman').iloc[:, 0]
-        rank_ic = rank_ic[[i % 2 == 1 for i in range(len(rank_ic.index))]]
+        concat_data = pd.concat([pred, y], axis=1)
+        ic = concat_data.groupby(groupby).apply(lambda x: x.iloc[:, 0].corr(x.iloc[:, 1]))
+        rank_ic = concat_data.groupby(groupby).apply(lambda x: x.iloc[:, 0].corr(x.iloc[:, 1], method='spearman'))
     else:
         from scipy import stats
         ic = []
