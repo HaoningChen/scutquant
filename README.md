@@ -19,4 +19,6 @@
 
 [杂记](https://github.com/HaoningChen/ScutQuant/tree/main/杂记)： 一些不太烧脑的非正式科普(里面的数学公式可能要刷新几次才能显示出来)  
 
-[网站](https://haoningchen.github.io/ScutQuant/): 请用pc端打开
+[网站](https://haoningchen.github.io/ScutQuant/): 请用pc端打开  
+
+联系方式(目前): 2434722850@qq.com
