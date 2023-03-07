@@ -380,8 +380,8 @@ def alpha360(kwargs, shift=60):
         kwargs = {}
     if "data" not in kwargs.keys():
         kwargs["data"] = pd.DataFrame()
-    if "price" not in kwargs.keys():
-        kwargs["price"] = "close"
+    if "close" not in kwargs.keys():
+        kwargs["close"] = "close"
     if "open" not in kwargs.keys():
         kwargs["open"] = "open"
     if "volume" not in kwargs.keys():
