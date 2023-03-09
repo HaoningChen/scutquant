@@ -94,18 +94,17 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
 
     acc_ret = []
     ben_ret = []
-    # days = 0
+    days = 0
     for i in range(len(acc_val)):
         acc_ret.append(acc_val[i] / init_val_acc - 1)
         ben_ret.append(ben_val[i] / init_val_ben - 1)
     excess_ret = []
-    """
-        for i in range(len(acc_ret)):
+
+    for i in range(len(acc_ret)):
         excess_ret.append(acc_ret[i] - ben_ret[i])
         if acc_ret[i] > 0:
             days += 1
     days /= len(acc_ret)
-    """
 
     sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq)
     inf_ratio = information_ratio(acc_ret, ben_ret)
@@ -124,7 +123,7 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
     print('Sharpe Ratio:', sharpe)
     print('Information Ratio:', inf_ratio, '\n')
     print('Pearson Correlation Coefficient Between Return and Benchmark', pd.Series(acc_ret).corr(pd.Series(ben_ret)))
-    # print('Profitable Days(%):', days)
+    print('Profitable Days(%):', days)
 
     if ret:
         acc_ret = pd.DataFrame(acc_ret, columns=["acc_ret"], index=time)
