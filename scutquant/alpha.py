@@ -207,8 +207,8 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
         kwargs = {}
     if "data" not in kwargs.keys():
         kwargs["data"] = pd.DataFrame()
-    if "price" not in kwargs.keys():
-        kwargs["price"] = "close"
+    if "close" not in kwargs.keys():
+        kwargs["close"] = "close"
     if "open" not in kwargs.keys():
         kwargs["open"] = "open"
     if "volume" not in kwargs.keys():
@@ -219,42 +219,27 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
         kwargs["high"] = "high"
     if "low" not in kwargs.keys():
         kwargs["low"] = "low"
-    if "shift" not in kwargs.keys():
-        kwargs["shift"] = 1
     if "groupby" not in kwargs.keys():
         kwargs["groupby"] = "code"
 
-    df = kwargs['data']
-    price = kwargs['price']
-    last_close = kwargs['open']
+    data = kwargs["data"]
+    open = kwargs["open"]
+    close = kwargs["close"]
     volume = kwargs['volume']
     amount = kwargs['amount']
     high = kwargs['high']
     low = kwargs['low']
-    label = kwargs['label']
-    shift = kwargs['shift']
-    groupby = kwargs['groupby']
+    groupby = kwargs["groupby"]
+
     if windows is None:
         windows = [5, 10, 20, 30, 60]
 
-    X = pd.DataFrame()
-    if label is not None:
-        data = df[label].groupby(groupby).shift(shift)
-        group = data.groupby([groupby])
-        for n in range(raw_data):
-            X[label + str(n)] = group.shift(n)
-        for w in windows:  # rolling windows
-            X['ma' + str(w)] = ma(group, w)
-            X['std' + str(w)] = std(group, w)
-            X['max' + str(w)] = max_(group, w)
-            X['min' + str(w)] = min_(group, w)
-            X['beta' + str(w)] = beta(group, w)
-            X['roc' + str(w)] = roc(group, w)
+    X = pd.DataFrame(index=data.index)
 
-    if price is not None:
-        group = df[price].groupby([groupby])
+    if close is not None:
+        group = data[close].groupby([groupby])
         for n in range(raw_data):
-            X[price + str(n)] = group.shift(n).sort_index().values
+            X[close + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['MA' + str(w)] = ma(group, w)
             X['STD' + str(w)] = std(group, w)
@@ -264,7 +249,7 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
             X['ROC' + str(w)] = roc(group, w)
 
     if volume is not None:
-        group = df[volume].groupby([groupby])
+        group = data[volume].groupby([groupby])
         for n in range(raw_data):
             X[volume + str(n)] = group.shift(n).sort_index().values
         for w in windows:
@@ -272,33 +257,33 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
             X['vstd' + str(w)] = std(group, w)
         if amount is not None:
             for w in windows:
-                X['vwap' + str(w)] = vwap(df[amount], df[volume], groupby=groupby, n=w)
+                X['vwap' + str(w)] = vwap(data[amount], data[volume], groupby=groupby, n=w)
 
-    if (last_close is not None) and (price is not None):
-        group = df[last_close].groupby([groupby])
+    if (open is not None) and (close is not None):
+        group = data[open].groupby([groupby])
         for n in range(raw_data):
-            X[last_close + str(n)] = group.shift(n).sort_index().values
+            X[open + str(n)] = group.shift(n).sort_index().values
         for w in windows:
-            # X['risk' + str(w)] = risk(df[price], df[last_close], groupby=groupby, n=w)
-            X['kmid' + str(w)] = kmid(df[price], df[last_close], groupby=groupby, n=w)
+            X['risk' + str(w)] = risk(data[close], data[open], groupby=groupby, n=w)
+            X['kmid' + str(w)] = kmid(data[close], data[open], groupby=groupby, n=w)
         if (high is not None) and (low is not None):
             for w in windows:
-                X['ksft' + str(w)] = ksft(df[price], df[last_close], df[high], df[low], groupby=groupby, n=w)
+                X['ksft' + str(w)] = ksft(data[close], data[open], data[high], data[low], groupby=groupby, n=w)
 
     if (high is not None) and (low is not None):
-        group_h = df[high].groupby([groupby])
-        group_l = df[low].groupby([groupby])
+        group_h = data[high].groupby([groupby])
+        group_l = data[low].groupby([groupby])
         for n in range(raw_data):
             X[high + str(n)] = group_h.shift(n).sort_index().values
             X[low + str(n)] = group_l.shift(n).sort_index().values
         for w in windows:
-            X['hml' + str(w)] = hml(df[high], df[low], groupby=groupby, n=w)
-        if price is not None:
+            X['hml' + str(w)] = hml(data[high], data[low], groupby=groupby, n=w)
+        if close is not None:
             for w in windows:
-                X['rsv' + str(w)] = rsv(df[price], df[high], df[low], groupby=groupby, n=w)
-        if last_close is not None:
+                X['rsv' + str(w)] = rsv(data[close], data[high], data[low], groupby=groupby, n=w)
+        if open is not None:
             for w in windows:
-                X['klen' + str(w)] = klen(df[high], df[low], df[last_close], groupby=groupby, n=w)
+                X['klen' + str(w)] = klen(data[high], data[low], data[open], groupby=groupby, n=w)
     return X
 
 
@@ -321,57 +306,66 @@ def make_factors_series(kwargs, windows=None):
     :param windows: list, 移动窗口的列表
     :return: pd.DataFrame
     """
-    df = kwargs['data']
-    price = kwargs['price']
-    last_close = kwargs['open']
+    if kwargs is None:
+        kwargs = {}
+    if "data" not in kwargs.keys():
+        kwargs["data"] = pd.DataFrame()
+    if "close" not in kwargs.keys():
+        kwargs["close"] = "close"
+    if "open" not in kwargs.keys():
+        kwargs["open"] = "open"
+    if "volume" not in kwargs.keys():
+        kwargs["volume"] = "volume"
+    if "amount" not in kwargs.keys():
+        kwargs["amount"] = "amount"
+    if "high" not in kwargs.keys():
+        kwargs["high"] = "high"
+    if "low" not in kwargs.keys():
+        kwargs["low"] = "low"
+    if "groupby" not in kwargs.keys():
+        kwargs["groupby"] = "code"
+
+    data = kwargs["data"]
+    open = kwargs["open"]
+    close = kwargs["close"]
     volume = kwargs['volume']
     amount = kwargs['amount']
     high = kwargs['high']
     low = kwargs['low']
-    label = kwargs['label']
-    shift = kwargs['shift']
     if windows is None:
         windows = [5, 10, 20, 30, 60]
 
-    X = pd.DataFrame()
-    if label is not None:
-        for w in windows:
-            X['ma' + str(w)] = ma(df[label].shift(shift), w)
-            X['std' + str(w)] = std(df[label].shift(shift), w)
-            X['max' + str(w)] = max_(df[label].shift(shift), w)
-            X['min' + str(w)] = min_(df[label].shift(shift), w)
-            X['beta' + str(w)] = beta(df[label].shift(shift), w)
-            X['roc' + str(w)] = roc(df[label].shift(shift), w)
+    X = pd.DataFrame(index=data.index)
 
-    if price is not None:
+    if close is not None:
         for w in windows:
-            X['MA' + str(w)] = ma(df[price], w)
-            X['STD' + str(w)] = std(df[price], w)
-            X['MAX' + str(w)] = max_(df[price], w)
-            X['MIN' + str(w)] = min_(df[price], w)
-            X['BETA' + str(w)] = beta(df[price], w)
-            X['ROC' + str(w)] = roc(df[price], w)
+            X['MA' + str(w)] = ma(data[close], w)
+            X['STD' + str(w)] = std(data[close], w)
+            X['MAX' + str(w)] = max_(data[close], w)
+            X['MIN' + str(w)] = min_(data[close], w)
+            X['BETA' + str(w)] = beta(data[close], w)
+            X['ROC' + str(w)] = roc(data[close], w)
 
     if volume is not None:
         for w in windows:
-            X['vma' + str(w)] = ma(df[volume], w)
-            X['vstd' + str(w)] = std(df[volume], w)
+            X['vma' + str(w)] = ma(data[volume], w)
+            X['vstd' + str(w)] = std(data[volume], w)
 
     if (volume is not None) and (amount is not None):
         for w in windows:
-            X['vwap' + str(w)] = vwap_series(df[amount], df[volume], n=w)
+            X['vwap' + str(w)] = vwap_series(data[amount], data[volume], n=w)
 
-    if (last_close is not None) and (price is not None):
+    if (open is not None) and (close is not None):
         for w in windows:
-            X['risk' + str(w)] = risk_series(df[price], df[last_close], n=w)
+            X['risk' + str(w)] = risk_series(data[close], data[open], n=w)
 
     if (high is not None) and (low is not None):
         for w in windows:
-            X['hml' + str(w)] = hml_series(df[high], df[low], n=w)
+            X['hml' + str(w)] = hml_series(data[high], data[low], n=w)
 
-    if (price is not None) and (high is not None) and (low is not None):
+    if (close is not None) and (high is not None) and (low is not None):
         for w in windows:
-            X['rsv' + str(w)] = rsv_series(df[price], df[high], df[low], n=w)
+            X['rsv' + str(w)] = rsv_series(data[close], data[high], data[low], n=w)
     return X
 
 

@@ -797,7 +797,7 @@ def plot_periodogram(X, time_freq='day', detrend='linear', ax=None):
                 "Weekly (52)",
                 "Semiweekly (104)",
             ],
-            rotation=15,
+            rotation=30,
         )
     elif time_freq == 'month':
         ax.set_xticks([1, 2, 4, 6, 12])
@@ -842,7 +842,7 @@ def plot_periodogram(X, time_freq='day', detrend='linear', ax=None):
     plt.show()
 
 
-def make_fourier_features(X, freq, order, name=None):
+def make_fourier_features(X, freq, order, name=None, time=None):
     """
     傅里叶特征：假设时间为t, 频率为f, 则特征 k = (2 * pi / f) * t
 
@@ -852,7 +852,8 @@ def make_fourier_features(X, freq, order, name=None):
     :param name: str, 自定义傅里叶特征的名字
     :return: pd.DataFrame, 加入了傅里叶特征的数据集
     """
-    time = np.arange(len(X.index), dtype=np.float32)
+    if time is None:
+        time = np.arange(len(X.index), dtype=np.float32)
     k = 2 * np.pi * (1 / freq) * time
     features = {}
     if name is None:
