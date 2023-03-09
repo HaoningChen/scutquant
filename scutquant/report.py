@@ -122,7 +122,7 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
     print('Max Drawdown(benchmark):', ben_mdd.min(), '\n')
     print('Sharpe Ratio:', sharpe)
     print('Information Ratio:', inf_ratio, '\n')
-    print('Pearson Correlation Coefficient Between Return and Benchmark', pd.Series(acc_ret).corr(pd.Series(ben_ret)))
+    print('Pearson Correlation Coefficient Between Return and Benchmark:', pd.Series(acc_ret).corr(pd.Series(ben_ret)))
     print('Profitable Days(%):', days)
 
     if ret:
