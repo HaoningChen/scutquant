@@ -399,17 +399,17 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
                 x_test = minmaxnorm(x_test, Min, Max)
         else:
             if norm == 'z':
-                mean, std = x_train.groupby(groupby).mean(), x_train.groupby(groupby).std()
+                mean, std = x_train.groupby(time).mean(), x_train.groupby(time).std()
                 x_train = zscorenorm(x_train, mean, std)
-                x_test = zscorenorm(x_test, x_test.groupby(groupby).mean(), x_test.groupby(groupby).std())
+                x_test = zscorenorm(x_test, x_test.groupby(time).mean(), x_test.groupby(time).std())
             elif norm == 'r':
-                median = x_train.groupby(groupby).median()
+                median = x_train.groupby(time).median()
                 x_train = robustzscorenorm(x_train, median)
-                x_test = robustzscorenorm(x_test, x_test.groupby(groupby).median())
+                x_test = robustzscorenorm(x_test, x_test.groupby(time).median())
             elif norm == 'm':
-                Min, Max = x_train.groupby(groupby).min(), x_train.groupby(groupby).max()
+                Min, Max = x_train.groupby(time).min(), x_train.groupby(time).max()
                 x_train = minmaxnorm(x_train, Min, Max)
-                x_test = minmaxnorm(x_test, x_test.groupby(groupby).min(), x_test.groupby(groupby).max())
+                x_test = minmaxnorm(x_test, x_test.groupby(time).min(), x_test.groupby(time).max())
         return x_train, x_test
 
     print(X.info())
@@ -437,8 +437,8 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
         if groupby is None:
             ymean, ystd = y_train.mean(), y_train.std()
         else:
-            ymean, ystd = y_test.groupby(groupby).mean(), y_test.groupby(groupby).std()
-        y_train = zscorenorm(y_train, y_train.groupby(groupby).mean(), y_train.groupby(groupby).std())
+            ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()
+        y_train = zscorenorm(y_train, y_train.groupby(datetime).mean(), y_train.groupby(datetime).std())
         print('label norm done', '\n')
     else:
         ymean, ystd = 0, 1
