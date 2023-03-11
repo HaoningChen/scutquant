@@ -375,6 +375,7 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
     :param y: str，目标值所在列的列名
     :param test_size: float, 测试集占数据集的比例
     :param groupby: str, 如果是面板数据则输入groupby的依据，序列数据则直接填None
+    :param datetime: str, 为了在截面上进行标准化，需要知道索引中表示时间的索引名
     :param norm: str, 标准化方式, 可选'z'/'r'/'m'
     :param label_norm: bool, 是否对目标值进行标准化
     :param select: bool, 是否去除无用特征
