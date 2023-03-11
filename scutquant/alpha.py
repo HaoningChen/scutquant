@@ -122,7 +122,6 @@ def vwap_series(amount, volume, n):
     return m.values
 
 
-
 def hml(high, low, groupby, n):
     # high minus low
     h = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean()
@@ -249,7 +248,8 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
                 X['VWAP' + str(w)] = vwap(data[amount], data[volume], groupby=groupby, n=w) / data[volume]
         if close is not None:
             for w in windows:
-                X["CORR_2" + str(w)] = data.groupby(groupby).apply(lambda x: x[volume].corr(x[close])) * (data[close] - data[open])
+                X["CORR_2" + str(w)] = data.groupby(groupby).apply(lambda x: x[volume].corr(x[close])) * (
+                            data[close] - data[open])
 
     if (open is not None) and (close is not None):
         group = data[open].groupby([groupby])
@@ -258,10 +258,11 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
                 X[open + str(n)] = group.shift(n).sort_index().values
         for w in windows:
             X['KIMD' + str(w)] = kmid(data[close], data[open], groupby=groupby, n=w) / data[close]
-            X["CORR" + str(w)] = data.groupby(groupby).apply(lambda x: x[open].corr(x[close])) * (data[close] - data[open])
+            X["CORR" + str(w)] = data.groupby(groupby).apply(lambda x: x[open].corr(x[close])) * (
+                        data[close] - data[open])
         if (high is not None) and (low is not None):
             for w in windows:
-                X['KSFT' + str(w)] = ksft(data[close], data[open], data[high], data[low], groupby=groupby, n=w)\
+                X['KSFT' + str(w)] = ksft(data[close], data[open], data[high], data[low], groupby=groupby, n=w) \
                                      / data[close]
 
     if (high is not None) and (low is not None):
@@ -273,8 +274,8 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
                 X[low + str(n)] = group_l.shift(n).sort_index().values
         for w in windows:
             X['HML' + str(w)] = hml(data[high], data[low], groupby=groupby, n=w) / data[close]
-            X["HML_2" + str(w)] = data.groupby(groupby).apply(lambda x: x[high].corr(x[low])) * (data[high] - data[low])\
-                                 / data[close]
+            X["HML_2" + str(w)] = data.groupby(groupby).apply(lambda x: x[high].corr(x[low])) * (data[high] - data[low]) \
+                                  / data[close]
         if close is not None:
             for w in windows:
                 X['RSV' + str(w)] = rsv(data[close], data[high], data[low], groupby=groupby, n=w) / data[close]
