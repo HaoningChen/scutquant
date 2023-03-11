@@ -357,7 +357,7 @@ def groupkfold_split(X, y, n_split=5):
 ####################################################
 # 自动处理器
 ####################################################
-def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, select=True, orth=True,
+def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', label_norm=True, select=True, orth=True,
                  describe=False, plot_x=False):
     """
     流程如下：
@@ -383,6 +383,35 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
     :param plot_x: bool, 是否画出X的分布
     :return: X_train, X_test, y_train, y_test, ymean, ystd
     """
+    def norm_data(x_train, x_test, norm=norm, groupby=groupby, time=datetime):
+        if groupby is None:
+            if norm == 'z':
+                mean, std = x_train.mean(), x_train.std()
+                x_train = zscorenorm(x_train)
+                x_test = zscorenorm(x_test, mean, std)
+            elif norm == 'r':
+                median = x_train.median()
+                x_train = robustzscorenorm(x_train)
+                x_test = robustzscorenorm(x_test, median)
+            elif norm == 'm':
+                Min, Max = x_train.min(), x_train.max()
+                x_train = minmaxnorm(x_train)
+                x_test = minmaxnorm(x_test, Min, Max)
+        else:
+            if norm == 'z':
+                mean, std = x_train.groupby(groupby).mean(), x_train.groupby(groupby).std()
+                x_train = zscorenorm(x_train, mean, std)
+                x_test = zscorenorm(x_test, x_test.groupby(groupby).mean(), x_test.groupby(groupby).std())
+            elif norm == 'r':
+                median = x_train.groupby(groupby).median()
+                x_train = robustzscorenorm(x_train, median)
+                x_test = robustzscorenorm(x_test, x_test.groupby(groupby).median())
+            elif norm == 'm':
+                Min, Max = x_train.groupby(groupby).min(), x_train.groupby(groupby).max()
+                x_train = minmaxnorm(x_train, Min, Max)
+                x_test = minmaxnorm(x_test, x_test.groupby(groupby).min(), x_test.groupby(groupby).max())
+        return x_train, x_test
+
     print(X.info())
     X_mis = percentage_missing(X)
     print('X_mis=', X_mis)
@@ -405,8 +434,11 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
     print('pop label done', '\n')
     # print(y_train.describe())
     if label_norm:
-        ymean, ystd = y_train.mean(), y_train.std()
-        y_train = zscorenorm(y_train)
+        if groupby is None:
+            ymean, ystd = y_train.mean(), y_train.std()
+        else:
+            ymean, ystd = y_test.groupby(groupby).mean(), y_test.groupby(groupby).std()
+        y_train = zscorenorm(y_train, y_train.groupby(groupby).mean(), y_train.groupby(groupby).std())
         print('label norm done', '\n')
     else:
         ymean, ystd = 0, 1
@@ -420,18 +452,8 @@ def auto_process(X, y, test_size=0.2, groupby=None, norm='z', label_norm=True, s
         X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
         X_test = feature_selector(X_test, mi_score)
 
-    if norm == 'z':
-        mean, std = X_train.mean(), X_train.std()
-        X_train = zscorenorm(X_train)
-        X_test = zscorenorm(X_test, mean, std)
-    elif norm == 'r':
-        median = X_train.median()
-        X_train = robustzscorenorm(X_train)
-        X_test = robustzscorenorm(X_test, median)
-    elif norm == 'm':
-        Min, Max = X_train.min(), X_train.max()
-        X_train = minmaxnorm(X_train)
-        X_test = minmaxnorm(X_test, Min, Max)
+    X_train, X_test = norm_data(X_train, X_test, groupby, datetime)
+
     if groupby is None:
         X_train = clean(X_train)
         X_test = clean(X_test)
