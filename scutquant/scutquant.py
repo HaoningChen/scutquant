@@ -375,7 +375,6 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
     :param y: str，目标值所在列的列名
     :param test_size: float, 测试集占数据集的比例
     :param groupby: str, 如果是面板数据则输入groupby的依据，序列数据则直接填None
-    :param datetime: str, 为了在截面上进行标准化，需要知道索引中表示时间的索引名
     :param norm: str, 标准化方式, 可选'z'/'r'/'m'
     :param label_norm: bool, 是否对目标值进行标准化
     :param select: bool, 是否去除无用特征
@@ -384,34 +383,6 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
     :param plot_x: bool, 是否画出X的分布
     :return: X_train, X_test, y_train, y_test, ymean, ystd
     """
-    def norm_data(x_train, x_test, norm=norm, groupby=groupby, time=datetime):
-        if groupby is None:
-            if norm == 'z':
-                mean, std = x_train.mean(), x_train.std()
-                x_train = zscorenorm(x_train)
-                x_test = zscorenorm(x_test, mean, std)
-            elif norm == 'r':
-                median = x_train.median()
-                x_train = robustzscorenorm(x_train)
-                x_test = robustzscorenorm(x_test, median)
-            elif norm == 'm':
-                Min, Max = x_train.min(), x_train.max()
-                x_train = minmaxnorm(x_train)
-                x_test = minmaxnorm(x_test, Min, Max)
-        else:
-            if norm == 'z':
-                mean, std = x_train.groupby(time).mean(), x_train.groupby(time).std()
-                x_train = zscorenorm(x_train, mean, std)
-                x_test = zscorenorm(x_test, x_test.groupby(time).mean(), x_test.groupby(time).std())
-            elif norm == 'r':
-                median = x_train.groupby(time).median()
-                x_train = robustzscorenorm(x_train, median)
-                x_test = robustzscorenorm(x_test, x_test.groupby(time).median())
-            elif norm == 'm':
-                Min, Max = x_train.groupby(time).min(), x_train.groupby(time).max()
-                x_train = minmaxnorm(x_train, Min, Max)
-                x_test = minmaxnorm(x_test, x_test.groupby(time).min(), x_test.groupby(time).max())
-        return x_train, x_test
 
     print(X.info())
     X_mis = percentage_missing(X)
@@ -446,24 +417,46 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
     show_dist(y_train)
     show_dist(y_test)
 
+    if groupby is None:
+        if norm == 'z':
+            mean, std = X_train.mean(), X_train.std()
+            X_train = zscorenorm(X_train)
+            X_test = zscorenorm(X_test, mean, std)
+        elif norm == 'r':
+            median = X_train.median()
+            X_train = robustzscorenorm(X_train)
+            X_test = robustzscorenorm(X_test, median)
+        elif norm == 'm':
+            Min, Max = X_train.min(), X_train.max()
+            X_train = minmaxnorm(X_train)
+            X_test = minmaxnorm(X_test, Min, Max)
+        X_train = clean(X_train)
+        X_test = clean(X_test)
+    else:
+        if norm == 'z':
+            mean, std = X_train.groupby(datetime).mean(), X_train.groupby(datetime).std()
+            X_train = zscorenorm(X_train, mean, std)
+            X_test = zscorenorm(X_test, X_test.groupby(datetime).mean(), X_test.groupby(datetime).std())
+        elif norm == 'r':
+            median = X_train.groupby(datetime).median()
+            X_train = robustzscorenorm(X_train, median)
+            X_test = robustzscorenorm(X_test, X_test.groupby(datetime).median())
+        elif norm == 'm':
+            Min, Max = X_train.groupby(datetime).min(), X_train.groupby(datetime).max()
+            X_train = minmaxnorm(X_train, Min, Max)
+            X_test = minmaxnorm(X_test, X_test.groupby(datetime).min(), X_test.groupby(datetime).max())
+        X_train.dropna(axis=1, how='all', inplace=True)
+        X_test.dropna(axis=1, how='all', inplace=True)
+        X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
+        X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
+    print('norm data done', '\n')
+
     if select:
         mi_score = make_mi_scores(X_train, y_train)
         print(mi_score)
         print(mi_score.describe())
         X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
         X_test = feature_selector(X_test, mi_score)
-
-    X_train, X_test = norm_data(X_train, X_test, groupby, datetime)
-
-    if groupby is None:
-        X_train = clean(X_train)
-        X_test = clean(X_test)
-    else:
-        X_train.dropna(axis=1, how='all', inplace=True)
-        X_test.dropna(axis=1, how='all', inplace=True)
-        X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
-        X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
-    print('norm data done', '\n')
 
     if describe:
         print(X_train.describe())
