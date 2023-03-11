@@ -111,7 +111,7 @@ def zscorenorm(X, mean=None, std=None, clip=True):
     X -= mean
     X /= std
     if clip:
-        X.clip(-5, 5, inplace=True)
+        X.clip(-3, 3, inplace=True)
     return X
 
 
@@ -122,7 +122,7 @@ def robustzscorenorm(X, median=None, clip=True):
     mad = abs(median) * 1.4826
     X /= mad
     if clip:
-        X.clip(-5, 5, inplace=True)
+        X.clip(-3, 3, inplace=True)
     return X
 
 
@@ -134,7 +134,7 @@ def minmaxnorm(X, Min=None, Max=None, clip=True):
     X -= Min
     X /= Max - Min
     if clip:
-        X.clip(-5, 5, inplace=True)
+        X.clip(-3, 3, inplace=True)
     return X
 
 
