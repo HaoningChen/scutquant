@@ -118,7 +118,7 @@ class BaselineStrategy(BaseStrategy):
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
         if "max_volume" not in kwargs.keys():
-            kwargs["max_volume"] = 0.002
+            kwargs["max_volume"] = 0.05
 
         self.buy = kwargs["buy"]
         self.sell = kwargs["sell"]
@@ -188,7 +188,7 @@ class TopKStrategy(BaseStrategy):
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
         if "max_volume" not in kwargs.keys():
-            kwargs["max_volume"] = 0.002
+            kwargs["max_volume"] = 0.05
 
         self.k = kwargs["k"]
         self.auto_offset = kwargs["auto_offset"]
@@ -252,7 +252,7 @@ class StrictTopKStrategy(BaseStrategy):
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
         if "max_volume" not in kwargs.keys():
-            kwargs["max_volume"] = 0.002
+            kwargs["max_volume"] = 0.05
 
         self.k = kwargs["k"]
         self.buy = kwargs["buy"]
@@ -316,7 +316,7 @@ class SigmaStrategy(BaseStrategy):
         if "risk_degree" not in kwargs.keys():
             kwargs["risk_degree"] = 0.95
         if "max_volume" not in kwargs.keys():
-            kwargs["max_volume"] = 0.002
+            kwargs["max_volume"] = 0.05
 
         self.sigma = kwargs["sigma"]
         self.buy = kwargs["buy"]

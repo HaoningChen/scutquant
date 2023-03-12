@@ -6,4 +6,4 @@ from .account import *
 from .report import *
 from .signal_generator import *
 
-__version__ = "0.0.7"
+__version__ = "0.0.1"

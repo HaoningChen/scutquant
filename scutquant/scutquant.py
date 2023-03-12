@@ -358,7 +358,7 @@ def groupkfold_split(X, y, n_split=5):
 # 自动处理器
 ####################################################
 def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', label_norm=True, select=True, orth=True,
-                 describe=False, plot_x=False):
+                 describe=False, plot_x=False, shift=2):
     """
     流程如下：
     初始化X，计算缺失值百分比，填充/去除缺失值，拆分数据集，判断训练集中目标值类别是否平衡并决定是否降采样（升采样和其它方法还没实现），分离Y并且画出其分布，
@@ -381,6 +381,7 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
     :param orth: 是否正交化
     :param describe: bool, 是否输出处理好的特征的前描述统计
     :param plot_x: bool, 是否画出X的分布
+    :param shift: int, 为防止数据泄露, 在label_norm时, 使用目标值滞后shift项的mean和std
     :return: X_train, X_test, y_train, y_test, ymean, ystd
     """
 
@@ -409,8 +410,12 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
         if groupby is None:
             ymean, ystd = y_train.mean(), y_train.std()
         else:
-            ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()
+            ymean, ystd = y_test.groupby(groupby).shift(shift).groupby(datetime).mean(), \
+                          y_test.groupby(groupby).shift(shift).groupby(datetime).std()
+            ymean.fillna(0, inplace=True)
+            ystd.fillna(1, inplace=True)
         y_train = zscorenorm(y_train, y_train.groupby(datetime).mean(), y_train.groupby(datetime).std())
+        y_test = zscorenorm(y_test, ymean, ystd, clip=False)
         print('label norm done', '\n')
     else:
         ymean, ystd = 0, 1
