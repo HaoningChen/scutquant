@@ -420,6 +420,6 @@ def alpha360(kwargs, shift=60):
     if amount is not None:
         group = data[amount].groupby(groupby)
         for i in range(1, shift + 1):
-            X[amount + str(i)] = group.shift(i) / data[close]
+            X[amount + str(i)] = group.shift(i) / (data[close] * data[volume])
 
     return X

@@ -7,6 +7,7 @@ import xgboost
 from scipy.signal import periodogram
 from statsmodels.graphics.tsaplots import plot_pacf
 import lightgbm as lgb
+import pickle
 
 
 def join_data(data, data_join, time='datetime', col=None, index=None):
@@ -593,10 +594,17 @@ class hybrid:
         # print(pred[0:5])
         return pred
 
-    def dump(self, target_dir):
-        import pickle
+    def save(self, target_dir):
         pickle.dump(self.lin_model, file=open(target_dir + '/linear.pkl', 'wb'))
         pickle.dump(self.xgb_model, file=open(target_dir + '/xgb.pkl', 'wb'))
+
+    def load(self, target_dir):
+        with open(target_dir + "/linear.pkl", "rb") as file:
+            self.lin_model = pickle.load(file)
+        file.close()
+        with open(target_dir + "/xgb.pkl", "rb") as file:
+            self.xgb_model = pickle.load(file)
+        file.close()
 
     def explain_model(self, index):
         print('XGBoost Feature Importance:')
