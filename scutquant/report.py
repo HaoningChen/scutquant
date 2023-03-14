@@ -126,7 +126,7 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
 
     for i in range(len(acc_ret)):
         excess_ret.append(acc_ret[i] - ben_ret[i])
-        if acc_ret[i] > 0:
+        if acc_ret[i] - ben_ret[i] > 0:
             days += 1
     days /= len(acc_ret)
 

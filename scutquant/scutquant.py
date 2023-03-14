@@ -8,6 +8,9 @@ from scipy.signal import periodogram
 from statsmodels.graphics.tsaplots import plot_pacf
 import lightgbm as lgb
 import pickle
+import random
+import warnings
+warnings.filterwarnings("ignore")
 
 
 def join_data(data, data_join, time='datetime', col=None, index=None):
@@ -337,29 +340,26 @@ def sk_split(X, y, test_size=0.2, random_state=None):
     return X_train, X_test, y_train, y_test
 
 
-def groupkfold_split(X, y, n_split=5):
-    from sklearn.model_selection import GroupKFold
-    groups = np.arange(len(X))
-    x_col = X.columns
-    X = np.array(X)
-    y = np.array(y)
-    gkf = GroupKFold(n_splits=n_split)
-    gkf.get_n_splits(X, y, groups)
-    for train_idx, test_idx in gkf.split(X, y, groups=groups):
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
-    X_train = pd.DataFrame(X_train, columns=x_col)
-    X_test = pd.DataFrame(X_test, columns=x_col)
-    y_train = pd.DataFrame(y_train)
-    y_test = pd.DataFrame(y_test)
-    return X_train, X_test, y_train, y_test
+def group_split(X, params=None):
+    if params is None:
+        params = {
+            "train": 0.6,
+            "valid": 0.2,
+            "test": 0.2
+        }
+    idx = X.index
+    lis = [_ for _ in range(len(idx))]
+    sample = random.sample(lis, int(len(lis) * params["test"] + 0.5))
+    idx_sample = idx[sample]
+    X_test = X[X.index.isin(idx_sample)]
+    X_train = X[~X.index.isin(idx_sample)]
+    return X_train, X_test
 
 
 ####################################################
 # 自动处理器
 ####################################################
-def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', label_norm=True, select=True, orth=True,
-                 describe=False, plot_x=False, shift=2):
+def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, select=True, orth=True, split_params=None):
     """
     流程如下：
     初始化X，计算缺失值百分比，填充/去除缺失值，拆分数据集，判断训练集中目标值类别是否平衡并决定是否降采样（升采样和其它方法还没实现），分离Y并且画出其分布，
@@ -374,17 +374,21 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
 
     :param X: pd.DataFrame，原始特征，包括了目标值
     :param y: str，目标值所在列的列名
-    :param test_size: float, 测试集占数据集的比例
     :param groupby: str, 如果是面板数据则输入groupby的依据，序列数据则直接填None
     :param norm: str, 标准化方式, 可选'z'/'r'/'m'
     :param label_norm: bool, 是否对目标值进行标准化
     :param select: bool, 是否去除无用特征
     :param orth: 是否正交化
-    :param describe: bool, 是否输出处理好的特征的前描述统计
-    :param plot_x: bool, 是否画出X的分布
-    :param shift: int, 为防止数据泄露, 在label_norm时, 使用目标值滞后shift项的mean和std
-    :return: X_train, X_test, y_train, y_test, ymean, ystd
+    :param split_params: dict, 划分数据集的方法
+    :return: dict{X_train, X_test, y_train, y_test, ymean, ystd}
     """
+    if split_params is None:
+        split_params = {
+            "method": "group_split",
+            "train": 0.8,
+            "valid": 0,
+            "test": 0.2,
+        }
 
     print(X.info())
     X_mis = percentage_missing(X)
@@ -396,33 +400,43 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
         X = X.groupby([groupby]).fillna(method='ffill').dropna()
     print('clean dataset done', '\n')
 
-    X_train, X_test = split(X, test_size=test_size)
-    # print(X_train.shape, X_test.shape)
-    X_0 = cal_0(X_train[y])
+    # 拆分数据集
+    if split_params["method"] == "split":
+        X_train, X_test = split(X, test_size=split_params["test"] if split_params["test"] is not None else 0.2)
+        y_train, y_test = X_train.pop(y), X_test.pop(y)
+    elif split_params["method"] == "group_split":
+        X_train, X_test = group_split(X)
+        y_train, y_test = X_train.pop(y), X_test.pop(y)
+    else:
+        Y = X.pop(y)
+        X_train, y_train, X_test, y_test = \
+            sk_split(X, Y, test_size=split_params["test"] if split_params["test"] is not None else 0.2)
+    print("split data done", "\n")
+
+    # 降采样
+    X_0 = cal_0(y_train)
     if X_0 > 0.5:
         print('The types of label value are imbalance, apply down sample method', '\n')
         X_train = down_sample(X_train, col=y)
         print('down sample done', '\n')
 
-    y_train, y_test = X_train.pop(y), X_test.pop(y)
-    print('pop label done', '\n')
-    # print(y_train.describe())
+    # 目标值标准化
     if label_norm:
         if groupby is None:
             ymean, ystd = y_train.mean(), y_train.std()
         else:
-            ymean, ystd = y_test.groupby(groupby).shift(shift).groupby(datetime).mean(), \
-                          y_test.groupby(groupby).shift(shift).groupby(datetime).std()
+            ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()
             ymean.fillna(0, inplace=True)
             ystd.fillna(1, inplace=True)
         y_train = zscorenorm(y_train, y_train.groupby(datetime).mean(), y_train.groupby(datetime).std())
-        y_test = zscorenorm(y_test, ymean, ystd, clip=False)
+        y_test = zscorenorm(y_test, ymean, ystd)
         print('label norm done', '\n')
     else:
         ymean, ystd = 0, 1
     show_dist(y_train)
     show_dist(y_test)
 
+    # 特征值标准化
     if groupby is None:
         if norm == 'z':
             mean, std = X_train.mean(), X_train.std()
@@ -457,6 +471,7 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
         X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
     print('norm data done', '\n')
 
+    # 特征选择
     if select:
         mi_score = make_mi_scores(X_train, y_train)
         print(mi_score)
@@ -464,26 +479,24 @@ def auto_process(X, y, test_size=0.2, groupby=None, datetime=None, norm='z', lab
         X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
         X_test = feature_selector(X_test, mi_score)
 
-    if describe:
-        print(X_train.describe())
-        print(X_test.describe())
-
-    if plot_x:
-        for c in X.columns:
-            show_dist(X[c])
-
+    # 特征正则化
     if orth:
         r = cal_multicollinearity(X_train)
         if r > 0.35:
             print('To solve multicollinearity problem, orthogonal method will be applied')
             X_train = make_pca(X_train)
-            # print(X_train.head(5))
             X_test = make_pca(X_test)
-            # print(X_test.head(5))
             print('PCA done')
-    # print(X_train.describe())
     print('all works done', '\n')
-    return X_train, X_test, y_train, y_test, ymean, ystd
+    returns = {
+        "X_train": X_train,
+        "y_train": y_train,
+        "X_test": X_test,
+        "y_test": y_test,
+        "ymean": ymean,
+        "ystd": ystd
+    }
+    return returns
 
 
 ####################################################
@@ -1000,7 +1013,7 @@ def auto_ts_ana(X, label, freq, windows=5, lags=12):
     :param freq: str, 周期图的频率, 可选'3sec', 'day', 'month' 和 'year'
     :param windows: int, 移动平均窗口
     :param lags: int, 滞后项
-    :return: None(画图)
+    :return:
     """
     X_copy = X.copy()
     X_copy = roll_mean(X_copy, label, windows)

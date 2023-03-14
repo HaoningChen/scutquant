@@ -1,4 +1,4 @@
-def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None, max_volume=0.002):
+def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None, max_volume=0.05):
     """
     生成每笔交易的交易量
     :param asset: list
@@ -8,19 +8,19 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
     :param num: int, default volume
     :param unit: string, "lot" or None
     :param max_volume: float, 最大交易手数是volume的max_volume倍
-    :return: int, 交易量, 单位是允许交易的最小单位
+    :return: list, 交易量, 单位是允许交易的最小单位(股或者手)
     """
     max_vol = {}
     if volume is not None:
         for k in volume.keys():
-            max_vol[k] = int(volume[k] * max_volume + 0.5)
+            max_vol[k] = int(volume[k] * max_volume + 0.5)  # 总交易量*max_volume, 四舍五入
     if (price is None) or (cash_available is None):
         n = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等
         if unit == 'lot':
             for i in range(len(n)):
                 n[i] = n[i] * 100
     else:
-        invest = cash_available / len(asset) if len(asset) != 0 else 0
+        invest = cash_available / len(asset) if len(asset) != 0 else 0  # 将可用资金平均地投资到可投资的资产中
         n = []
         if unit == 'lot':
             for a in asset:
@@ -36,7 +36,7 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
     return n
 
 
-def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.002):
+def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.05):
     """
     :param code: code of assets to be traded
     :param num: number of units
@@ -111,8 +111,8 @@ class BaselineStrategy(BaseStrategy):
             kwargs["offset_freq"] = 1
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
-        if "trade_volume" not in kwargs.keys():
-            kwargs["volume"] = 50
+        if "short_volume" not in kwargs.keys():
+            kwargs["short_volume"] = 50
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -125,7 +125,7 @@ class BaselineStrategy(BaseStrategy):
         self.auto_offset = kwargs["auto_offset"]
         self.offset_freq = kwargs["offset_freq"]
         self.buy_only = kwargs["buy_only"]
-        self.num = kwargs["volume"]
+        self.num = kwargs["short_volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
@@ -181,8 +181,8 @@ class TopKStrategy(BaseStrategy):
             kwargs["offset_freq"] = 1
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
-        if "trade_volume" not in kwargs.keys():
-            kwargs["volume"] = 50
+        if "short_volume" not in kwargs.keys():
+            kwargs["short_volume"] = 50
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -194,7 +194,7 @@ class TopKStrategy(BaseStrategy):
         self.auto_offset = kwargs["auto_offset"]
         self.offset_freq = kwargs["offset_freq"]
         self.buy_only = kwargs["buy_only"]
-        self.num = kwargs["volume"]
+        self.num = kwargs["short_volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
@@ -245,8 +245,8 @@ class StrictTopKStrategy(BaseStrategy):
             kwargs["offset_freq"] = 1
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
-        if "trade_volume" not in kwargs.keys():
-            kwargs["volume"] = 50
+        if "short_volume" not in kwargs.keys():
+            kwargs["short_volume"] = 50
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -260,7 +260,7 @@ class StrictTopKStrategy(BaseStrategy):
         self.auto_offset = kwargs["auto_offset"]
         self.offset_freq = kwargs["offset_freq"]
         self.buy_only = kwargs["buy_only"]
-        self.num = kwargs["volume"]
+        self.num = kwargs["short_volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
@@ -309,8 +309,8 @@ class SigmaStrategy(BaseStrategy):
             kwargs["offset_freq"] = 1
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
-        if "trade_volume" not in kwargs.keys():
-            kwargs["volume"] = 50
+        if "short_volume" not in kwargs.keys():
+            kwargs["short_volume"] = 50
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -324,7 +324,7 @@ class SigmaStrategy(BaseStrategy):
         self.auto_offset = kwargs["auto_offset"]
         self.offset_freq = kwargs["offset_freq"]
         self.buy_only = kwargs["buy_only"]
-        self.num = kwargs["volume"]
+        self.num = kwargs["short_volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
