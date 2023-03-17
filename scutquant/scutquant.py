@@ -10,7 +10,9 @@ import lightgbm as lgb
 import pickle
 import random
 import warnings
+
 warnings.filterwarnings("ignore")
+random.seed(2046)
 
 
 def join_data(data, data_join, time='datetime', col=None, index=None):
@@ -321,7 +323,7 @@ def bootstrap(X, col, val=0, windows=5, n=0.35):
 ####################################################
 # 拆分数据集
 ####################################################
-def split(X, test_size=0.2):
+def normal_split(X, test_size=0.2):
     length = X.shape[0] - 1
     train_rows = int(length * (1 - test_size))
     X_train = X[0:train_rows].copy()
@@ -329,18 +331,7 @@ def split(X, test_size=0.2):
     return X_train, X_test
 
 
-def sk_split(X, y, test_size=0.2, random_state=None):
-    from sklearn.model_selection import train_test_split
-    x_col = X.columns
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
-    X_train = pd.DataFrame(X_train, columns=x_col)
-    X_test = pd.DataFrame(X_test, columns=x_col)
-    y_train = pd.DataFrame(y_train)
-    y_test = pd.DataFrame(y_test)
-    return X_train, X_test, y_train, y_test
-
-
-def group_split(X, params=None):
+def split(X, params=None):
     if params is None:
         params = {
             "train": 0.6,
@@ -356,10 +347,26 @@ def group_split(X, params=None):
     return X_train, X_test
 
 
+def group_split(X, params=None):
+    if params is None:
+        params = {
+            "train": 0.6,
+            "valid": 0.2,
+            "test": 0.2
+        }
+    time = X.index.get_level_values(0).unique().values
+    lis = [_ for _ in range(len(time))]
+    sample = random.sample(lis, int(len(lis) * params["test"] + 0.5))
+    X_test = X[X.index.get_level_values(0).isin(time[sample])]
+    X_train = X[~X.index.isin(X_test.index)]
+    return X_train, X_test
+
+
 ####################################################
 # 自动处理器
 ####################################################
-def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, select=True, orth=True, split_params=None):
+def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, select=True, orth=True,
+                 split_params=None):
     """
     流程如下：
     初始化X，计算缺失值百分比，填充/去除缺失值，拆分数据集，判断训练集中目标值类别是否平衡并决定是否降采样（升采样和其它方法还没实现），分离Y并且画出其分布，
@@ -385,9 +392,11 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
     if split_params is None:
         split_params = {
             "method": "group_split",
-            "train": 0.8,
-            "valid": 0,
-            "test": 0.2,
+            "params": {
+                "train": 0.8,
+                "valid": 0,
+                "test": 0.2,
+            }
         }
 
     print(X.info())
@@ -401,16 +410,15 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
     print('clean dataset done', '\n')
 
     # 拆分数据集
-    if split_params["method"] == "split":
-        X_train, X_test = split(X, test_size=split_params["test"] if split_params["test"] is not None else 0.2)
+    if split_params["method"] == "normal_split":
+        X_train, X_test = normal_split(X, test_size=split_params["params"]["test"] if split_params["params"]["test"] is not None else 0.2)
         y_train, y_test = X_train.pop(y), X_test.pop(y)
-    elif split_params["method"] == "group_split":
-        X_train, X_test = group_split(X)
+    elif split_params["method"] == "split":
+        X_train, X_test = split(X, params=split_params["params"])
         y_train, y_test = X_train.pop(y), X_test.pop(y)
     else:
-        Y = X.pop(y)
-        X_train, y_train, X_test, y_test = \
-            sk_split(X, Y, test_size=split_params["test"] if split_params["test"] is not None else 0.2)
+        X_train, X_test = group_split(X, params=split_params["params"])
+        y_train, y_test = X_train.pop(y), X_test.pop(y)
     print("split data done", "\n")
 
     # 降采样
@@ -426,8 +434,6 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
             ymean, ystd = y_train.mean(), y_train.std()
         else:
             ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()
-            ymean.fillna(0, inplace=True)
-            ystd.fillna(1, inplace=True)
         y_train = zscorenorm(y_train, y_train.groupby(datetime).mean(), y_train.groupby(datetime).std())
         y_test = zscorenorm(y_test, ymean, ystd)
         print('label norm done', '\n')
@@ -465,10 +471,13 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
             Min, Max = X_train.groupby(datetime).min(), X_train.groupby(datetime).max()
             X_train = minmaxnorm(X_train, Min, Max)
             X_test = minmaxnorm(X_test, X_test.groupby(datetime).min(), X_test.groupby(datetime).max())
-        X_train.dropna(axis=1, how='all', inplace=True)
-        X_test.dropna(axis=1, how='all', inplace=True)
         X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
         X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
+
+    X_train.dropna(axis=1, how='all', inplace=True)
+    X_test.dropna(axis=1, how='all', inplace=True)
+    # y_train = y_train[y_train.index.isin(X_train)]
+    # y_test = y_test[y_test.index.isin(X_test)]
     print('norm data done', '\n')
 
     # 特征选择
@@ -714,6 +723,7 @@ def ic_ana(pred, y, groupby=None, freq=1, plot=True):
         rank_ic = pd.Series(rank_ic)
     # print('rank_ic:', rank_ic)
     if plot:
+        plt.figure(figsize=(10, 6))
         plt.plot(ic.values, label='ic', marker='o')
         plt.plot(rank_ic.values, label='rank_ic', marker='o')
         plt.xlabel(groupby + '_id')

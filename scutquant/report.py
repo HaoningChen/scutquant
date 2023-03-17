@@ -148,7 +148,7 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
     print('Sharpe Ratio:', sharpe)
     print('Sortino Ratio:', sortino)
     print('Information Ratio:', inf_ratio, '\n')
-    print('Pearson Correlation Coefficient Between Return and Benchmark:', pd.Series(acc_ret).corr(pd.Series(ben_ret)))
+    print('Beta:', pd.Series(acc_ret).corr(pd.Series(ben_ret)) * pd.Series(acc_ret).std() / pd.Series(ben_ret).std())
     print('Profitable Days(%):', days)
 
     if ret:

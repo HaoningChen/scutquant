@@ -1,11 +1,10 @@
 from . import account, signal_generator, strategy  # 别动这行！
 
 
-def prepare(predict, data, time, price, volume):
+def prepare(predict, data, price, volume):
     """
     :param predict: pd.DataFrame, 预测值, 应包括"predict"
     :param data: pd.DataFrame, 提供时间和价格信息
-    :param time: str, data中表示时间的列名
     :param price: str, data中表示价格的列名
     :param volume: str, data中表示成交量的列名
     :return: pd.DataFrame
@@ -15,13 +14,11 @@ def prepare(predict, data, time, price, volume):
     index = predict.index
     data1 = data_[data_.index.isin(index)]
     data1 = data1.reset_index()
-    data1['t'] = data1[time]
     data1 = data1.set_index(predict.index.names).sort_index()
-    predict['t'] = data1['t']
     predict['price'] = data1[price]
     predict['volume'] = data1[volume]
     predict.index.names = ['time', 'code']
-    predict["price"] = predict["price"].groupby(["code"]).shift(-1)
+    predict["price"] = predict["price"].groupby(["code"]).shift(-1)  # 指令是T时生成的, 但是T+1执行, 所以是shift(-1)
     return predict.dropna()
 
 
@@ -71,10 +68,10 @@ class Executor:
         :param data: pd.DataFrame, 索引为[('time', 'code')], 列至少应包括 'price' 和 't', 见 execute() 的注释
         :return:
         """
-        data_copy = data.copy().reset_index()
-        t0 = data_copy['t'][0]
-        code = data_copy[data_copy['t'] == t0]['code']
-        price0 = data_copy[data_copy['t'] == t0]['price']
+        data_copy = data.copy()
+        t0 = data_copy.index.get_level_values(0)[0]
+        code = data_copy[data_copy.index.get_level_values(0) == t0].index.get_level_values(1).values
+        price0 = data_copy[data_copy.index.get_level_values(0) == t0]['price']
         price_zip = zip(code, price0)
         self.price = dict(price_zip)
         if self.position is None:  # 如果没有position自然也没有available, 将它们初始化为0
@@ -108,14 +105,12 @@ class Executor:
         :return: self
         """
 
-        def check_names(index=data.index, predict='predict', t='t', price='price'):
+        def check_names(index=data.index, predict='predict',  price='price'):
             names = index.names
             if names[0] != 'time' or names[1] != 'code':
                 raise ValueError("index should be like [('time', 'code')]")
             elif predict not in data.columns:
                 raise ValueError("data should include column" + predict)
-            elif t not in data.columns:
-                raise ValueError("data should include column" + t)
             elif price not in data.columns:
                 raise ValueError("data should include column" + price)
 
@@ -123,22 +118,21 @@ class Executor:
         Executor.init_account(self, data)
         Executor.create_account(self)
         if self.mode == 'generate':
-            time = data['t'].unique()
+            time = data.index.get_level_values(0).unique().values
             for t in time:
                 self.time.append(t)
-                data_select = data[data['t'] == t]
+                data_select = data[data.index.get_level_values(0) == t]
                 signal = signal_generator.generate(data=data_select, strategy=self.s,
                                                    cash_available=Executor.get_cash_available(self))
                 order, current_price = signal["order"], signal["current_price"]
 
-                if verbose == 1:
-                    print(order, '\n')
-
                 if self.s.auto_offset:
                     self.user_account.auto_offset(freq=self.s.offset_freq, cost_buy=self.cost_buy,
                                                   cost_sell=self.cost_sell, min_cost=self.min_cost)
+                order, trade = self.user_account.check_order(order, current_price)
 
-                trade = self.user_account.check_order(order, current_price)
+                if verbose == 1:
+                    print(order, '\n')
 
                 self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
                                              cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)

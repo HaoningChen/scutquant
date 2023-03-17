@@ -112,7 +112,7 @@ class BaselineStrategy(BaseStrategy):
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
         if "short_volume" not in kwargs.keys():
-            kwargs["short_volume"] = 50
+            kwargs["short_volume"] = 0  # 为0时，只能用底仓做空; >0时允许融券做空
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -182,7 +182,7 @@ class TopKStrategy(BaseStrategy):
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
         if "short_volume" not in kwargs.keys():
-            kwargs["short_volume"] = 50
+            kwargs["short_volume"] = 0  # 为0时，只能用底仓做空; >0时允许融券做空
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -246,7 +246,7 @@ class StrictTopKStrategy(BaseStrategy):
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
         if "short_volume" not in kwargs.keys():
-            kwargs["short_volume"] = 50
+            kwargs["short_volume"] = 0  # 为0时，只能用底仓做空; >0时允许融券做空
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -310,7 +310,7 @@ class SigmaStrategy(BaseStrategy):
         if "buy_only" not in kwargs.keys():
             kwargs["buy_only"] = False
         if "short_volume" not in kwargs.keys():
-            kwargs["short_volume"] = 50
+            kwargs["short_volume"] = 0  # 为0时，只能用底仓做空; >0时允许融券做空
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
