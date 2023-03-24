@@ -411,7 +411,8 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
 
     # 拆分数据集
     if split_params["method"] == "normal_split":
-        X_train, X_test = normal_split(X, test_size=split_params["params"]["test"] if split_params["params"]["test"] is not None else 0.2)
+        X_train, X_test = normal_split(X, test_size=split_params["params"]["test"] if split_params["params"][
+                                                                                          "test"] is not None else 0.2)
         y_train, y_test = X_train.pop(y), X_test.pop(y)
     elif split_params["method"] == "split":
         X_train, X_test = split(X, params=split_params["params"])
@@ -511,7 +512,7 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
 ####################################################
 # 自动建模（线性回归模型）
 ####################################################
-def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=None, cv=10, max_iter=1000):
+def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=None, cv=10, max_iter=1000, verbose=1):
     """
     :param x: pd.DataFrame, 特征值
     :param y: pd.Series or pd.DataFrame, 目标值
@@ -528,7 +529,8 @@ def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=
             logspace_params = [-5, 2, 200]
     from sklearn import linear_model
     model = None
-    print(method + ' method will be used')
+    if verbose == 1:
+        print(method + ' method will be used')
     if method == 'ols':
         lrg = linear_model.LinearRegression()
         model = lrg.fit(x, y)

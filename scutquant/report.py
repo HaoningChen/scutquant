@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from . import scutquant
 
 
 def sharpe_ratio(ret, rf=0.03, freq=1):
@@ -13,7 +14,7 @@ def sharpe_ratio(ret, rf=0.03, freq=1):
     :return: float, 对应时间频率的夏普比率
     """
     ret_copy = pd.Series(ret)
-    rf /= freq
+    rf = (1 + rf) ** (1 / freq) - 1
     return (ret_copy.mean() - rf) / ret_copy.std()
 
 
@@ -107,7 +108,7 @@ def accuracy(pred, y, sign=">="):
     return len(data_true) / len(data)
 
 
-def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True, rf=0.03, freq=1, time=None,
+def report_all(user_account, benchmark, show_raw_value=False, excess_return=True, risk=True, rf=0.03, freq=1, time=None,
                figsize=(10, 6)):
     if time is not None:
         time = pd.to_datetime(time, format='%Y-%m-%d')
@@ -130,38 +131,46 @@ def report_all(user_account, benchmark, ret=True, excess_return=True, risk=True,
             days += 1
     days /= len(acc_ret)
 
-    sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq)
-    sortino = sortino_ratio(acc_ret, ben_ret)
-    inf_ratio = information_ratio(acc_ret, ben_ret)
     acc_mdd = calculate_mdd(pd.Series(acc_ret))
     ben_mdd = calculate_mdd(pd.Series(ben_ret))
 
-    print('E(r):', pd.Series(acc_ret).mean())
-    print('std:', pd.Series(acc_ret).std())
-    print('E(r_benchmark):', pd.Series(ben_ret).mean())
-    print('std_benchmark:', pd.Series(ben_ret).std(), '\n')
+    ret = pd.Series(acc_ret)  # 累计收益率
+    ben = pd.Series(ben_ret)  # benchmark的累计收益率
+    x = ben.values.reshape(-1, 1)
+    model = scutquant.auto_lrg(x, ret, verbose=0)
+
+    sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq)
+    sortino = sortino_ratio(acc_ret, ben_ret)
+    inf_ratio = information_ratio(acc_ret, ben_ret)
+
+    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / len(ret)) - 1)
+    # print("years:", 252 / len(ret))
+    print('Annualized Volatility:', ret.std() * (len(ret) / 252) ** 0.5)
+    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / len(ret)) - 1)
+    print('Annualized Volatility(Benchmark):', ben.std() * (len(ret) / 252) ** 0.5, '\n')
     print('Cumulative Rate of Return:', acc_ret[-1])
-    print('Cumulative Rate of Return(benchmark):', ben_ret[-1])
+    print('Cumulative Rate of Return(Benchmark):', ben_ret[-1])
     print('Cumulative Excess Rate of Return:', excess_ret[-1], '\n')
     print('Max Drawdown:', acc_mdd.min())
-    print('Max Drawdown(benchmark):', ben_mdd.min(), '\n')
+    print('Max Drawdown(Benchmark):', ben_mdd.min(), '\n')
     print('Sharpe Ratio:', sharpe)
     print('Sortino Ratio:', sortino)
     print('Information Ratio:', inf_ratio, '\n')
-    print('Beta:', pd.Series(acc_ret).corr(pd.Series(ben_ret)) * pd.Series(acc_ret).std() / pd.Series(ben_ret).std())
+    print('Beta:', model.coef_[0])
+    print("Alpha:", model.intercept_)
+    print("Epsilon:", (ret - model.predict(x)).std())
     print('Profitable Days(%):', days)
 
-    if ret:
-        acc_ret = pd.DataFrame(acc_ret, columns=["acc_ret"], index=time)
-        ben_ret = pd.DataFrame(ben_ret, columns=["acc_ret"], index=time)
-        plot([acc_ret, ben_ret], label=['cum_return_rate', 'benchmark'], title='Rate of Return',
-             ylabel='value', figsize=figsize)
-    else:
+    if show_raw_value:
         acc_val = pd.DataFrame(acc_val, columns=["acc_val"], index=time)
         ben_val = pd.DataFrame(ben_val, columns=["acc_val"], index=time)
         plot([acc_val, ben_val], label=['cum_return', 'benchmark'], title='Return', ylabel='value',
              figsize=figsize)
-
+    else:
+        acc_ret = pd.DataFrame(acc_ret, columns=["acc_ret"], index=time)
+        ben_ret = pd.DataFrame(ben_ret, columns=["acc_ret"], index=time)
+        plot([acc_ret, ben_ret], label=['cum_return_rate', 'benchmark'], title='Rate of Return',
+             ylabel='value', figsize=figsize)
     if excess_return:
         excess_ret = pd.DataFrame(excess_ret, columns=["excess_ret"], index=time)
         plot([excess_ret], label=['excess_return'], title='Excess Rate of Return', ylabel='value',
