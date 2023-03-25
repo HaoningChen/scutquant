@@ -113,6 +113,7 @@ def make_factors(kwargs=None, windows=None):
 
     if close is not None:
         for w in windows:
+            X["CLOSE" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
             X["ROC" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w) - 1) / w
             X["BETA" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w)) / (data[close] * w)
         if open is not None:
@@ -147,11 +148,27 @@ def make_factors(kwargs=None, windows=None):
                     X["PERF6"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).max()
                     X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).min()
                     X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).median()
+    if open is not None:
+        for w in windows:
+            X["OPEN" + str(w)] = data[open].groupby(groupby).shift(w) / data[open]
+    if high is not None:
+        for w in windows:
+            X["HIGH" + str(w)] = data[high].groupby(groupby).shift(w) / data[high]
+    if low is not None:
+        for w in windows:
+            X["LOW" + str(w)] = data[low].groupby(groupby).shift(w) / data[low]
     if volume is not None:
+        for w in windows:
+            X["VOLUME" + str(w)] = data[volume].groupby(groupby).shift(w) / data[volume]
         X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
         if amount is not None:
             mean = data[amount] / data[volume]
             X["MEAN"] = mean / mean.groupby(datetime).mean()
+            for w in windows:
+                X["MEAN" + str(w)] = mean.groupby(groupby).shift(w) / mean
+    if amount is not None:
+        for w in windows:
+            X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
     return X
 
 
