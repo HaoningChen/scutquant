@@ -43,114 +43,7 @@
 import pandas as pd
 
 
-def ma(x, n):
-    m = x.rolling(window=n).mean()
-    return m.sort_index().values
-
-
-def std(x, n):
-    s = x.rolling(window=n).std()
-    return s.sort_index().values
-
-
-def max_(x, n):
-    m = x.rolling(window=n).max()
-    return m.sort_index().values
-
-
-def min_(x, n):
-    m = x.rolling(window=n).min()
-    return m.sort_index().values
-
-
-def beta(x, n):
-    # The rate of price change in the past d periods
-    b = ((x.shift(n).fillna(x.mean()) + 1e-10) - x.shift(0)) / n
-    return b.sort_index().values
-
-
-def roc(x, n):
-    # rate of change
-    r = (x.shift(n).fillna(x.mean()) + 1e-10) / x.shift(0) - 1
-    return r.sort_index().values
-
-
-def kmid(close, open, groupby, n):
-    k = close.groupby([groupby]).rolling(n).mean() / open.groupby([groupby]).rolling(n).mean() - 1
-    return k.sort_index().values
-
-
-def kmid2(close, open, high, low, groupby, n):
-    # 作用不大
-    k = close.groupby([groupby]).rolling(n).mean() - open.groupby([groupby]).rolling(n).mean()
-    hl = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean() + 1e-12
-    k = k / hl
-    return k.sort_index().values
-
-
-def klen(high, low, open, groupby, n):
-    k = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean()
-    k = k / open.groupby([groupby]).rolling(n).mean()
-    return k.sort_index().values
-
-
-def ksft(close, open, high, low, groupby, n):
-    k = 2 * close.groupby([groupby]).rolling(n).mean() - high.groupby([groupby]).rolling(n).mean() - \
-        low.groupby([groupby]).rolling(n).mean()
-    k = k / open.groupby([groupby]).rolling(n).mean()
-    return k.sort_index().values
-
-
-def ksft2(close, high, low, groupby, n):
-    # 作用不大
-    k = 2 * close.groupby([groupby]).rolling(n).mean() - high.groupby([groupby]).rolling(n).mean() - \
-        low.groupby([groupby]).rolling(n).mean()
-    hl = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean() + 1e-12
-    k = k / hl
-    return k.sort_index().values
-
-
-def vwap(amount, volume, groupby, n):
-    # 加权成交均价
-    m = amount.groupby([groupby]).rolling(n).sum() / (volume.groupby([groupby]).rolling(n).sum() * 100 + 1e-10)
-    m = m.sort_index()
-    return m.values
-
-
-def vwap_series(amount, volume, n):
-    m = amount.rolling(n).sum() / (volume.rolling(n).sum() * 100 + 1e-10)
-    return m.values
-
-
-def hml(high, low, groupby, n):
-    # high minus low
-    h = high.groupby([groupby]).rolling(n).mean() - low.groupby([groupby]).rolling(n).mean()
-    return h.sort_index().values
-
-
-def hml_series(high, low, n):
-    # high minus low
-    h = high.rolling(n).mean() - low.rolling(n).mean()
-    return h.values
-
-
-def rsv(price, high, low, groupby, n):
-    # Represent the price position between upper and lower resistent price for past n periods
-    h = high.groupby([groupby]).rolling(n).max().values
-    l = low.groupby([groupby]).rolling(n).min().values
-    r = price / (0.5 * (h + l)) - 1
-    return r.sort_index().values
-
-
-def rsv_series(price, high, low, n):
-    # Represent the price position between upper and lower resistent price for past n periods
-    h = high.rolling(n).max().values
-    l = low.rolling(n).min().values
-    r = price / (0.5 * (h + l)) - 1
-    return r.values
-
-
-def make_factors(kwargs=None, windows=None, raw_data=10):
+def make_factors(kwargs=None, windows=None):
     """
     面板数据适用，序列数据请移步 make_factors_series
 
@@ -168,7 +61,6 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
             'low': 'low',
             'volume': 'volume',
             'amount': 'amount',
-            'groupby': 'code',
         }
 
         X = alpha.make_factors(kwargs)
@@ -183,10 +75,8 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
         high: str, 当前tick的最高价
         low: str, 当前tick的最低价
         label : str, 目标值
-        groupby: str, 排序的标准（一般为'code'）
     }
     :param windows: list, 移动窗口的列表
-    :param raw_data: 原始数据的滞后项
     :return: pd.DataFrame
     """
     if kwargs is None:
@@ -205,8 +95,6 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
         kwargs["high"] = "high"
     if "low" not in kwargs.keys():
         kwargs["low"] = "low"
-    if "groupby" not in kwargs.keys():
-        kwargs["groupby"] = "code"
 
     data = kwargs["data"]
     open = kwargs["open"]
@@ -215,7 +103,8 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
     amount = kwargs['amount']
     high = kwargs['high']
     low = kwargs['low']
-    groupby = kwargs["groupby"]
+    datetime = data.index.names[0]
+    groupby = data.index.names[1]
 
     if windows is None:
         windows = [5, 10, 20, 30, 60]
@@ -223,142 +112,46 @@ def make_factors(kwargs=None, windows=None, raw_data=10):
     X = pd.DataFrame(index=data.index)
 
     if close is not None:
-        group = data[close].groupby([groupby])
-        if raw_data > 0:
-            for n in range(raw_data):
-                X[close + str(n)] = group.shift(n).sort_index().values
         for w in windows:
-            X['MA' + str(w)] = ma(group, w) / data[close]
-            X['STD' + str(w)] = std(group, w) / data[close]
-            X['MAX' + str(w)] = max_(group, w) / data[close]
-            X['MIN' + str(w)] = min_(group, w) / data[close]
-            X['BETA' + str(w)] = beta(group, w) / data[close]
-            X['ROC' + str(w)] = roc(group, w)
-
-    if volume is not None:
-        group = data[volume].groupby([groupby])
-        if raw_data > 0:
-            for n in range(raw_data):
-                X[volume + str(n)] = group.shift(n).sort_index().values
-        for w in windows:
-            X['VMA' + str(w)] = ma(group, w) / data[volume]
-            X['VSTD' + str(w)] = std(group, w) / data[volume]
-        if amount is not None:
-            for w in windows:
-                X['VWAP' + str(w)] = vwap(data[amount], data[volume], groupby=groupby, n=w) / data[volume]
-        if close is not None:
-            for w in windows:
-                X["CORR_2" + str(w)] = data.groupby(groupby).apply(lambda x: x[volume].corr(x[close])) * (
-                            data[close] - data[open])
-
-    if (open is not None) and (close is not None):
-        group = data[open].groupby([groupby])
-        if raw_data > 0:
-            for n in range(raw_data):
-                X[open + str(n)] = group.shift(n).sort_index().values
-        for w in windows:
-            X['KIMD' + str(w)] = kmid(data[close], data[open], groupby=groupby, n=w) / data[close]
-            X["CORR" + str(w)] = data.groupby(groupby).apply(lambda x: x[open].corr(x[close])) * (
-                        data[close] - data[open])
-        if (high is not None) and (low is not None):
-            for w in windows:
-                X['KSFT' + str(w)] = ksft(data[close], data[open], data[high], data[low], groupby=groupby, n=w) \
-                                     / data[close]
-
-    if (high is not None) and (low is not None):
-        group_h = data[high].groupby([groupby])
-        group_l = data[low].groupby([groupby])
-        if raw_data > 0:
-            for n in range(raw_data):
-                X[high + str(n)] = group_h.shift(n).sort_index().values
-                X[low + str(n)] = group_l.shift(n).sort_index().values
-        for w in windows:
-            X['HML' + str(w)] = hml(data[high], data[low], groupby=groupby, n=w) / data[close]
-            X["HML_2" + str(w)] = data.groupby(groupby).apply(lambda x: x[high].corr(x[low])) * (data[high] - data[low]) \
-                                  / data[close]
-        if close is not None:
-            for w in windows:
-                X['RSV' + str(w)] = rsv(data[close], data[high], data[low], groupby=groupby, n=w) / data[close]
+            X["ROC" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w) - 1) / w
+            X["BETA" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w)) / (data[close] * w)
         if open is not None:
+            X["KMID"] = data[close] / data[open] - 1
+            # performance: 股票当日收益率相对大盘的表现
+            X["PERF1"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).mean()
+            X["PERF2"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).max()
+            X["PERF3"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).min()
+            X["PERF4"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).median()
             for w in windows:
-                X['KLEN' + str(w)] = klen(data[high], data[low], data[open], groupby=groupby, n=w) / data[close]
-    return X
-
-
-def make_factors_series(kwargs, windows=None):
-    """
-    只比make_factors少了个groupby参数
-
-    :param kwargs:
-    {
-        data: pd.DataFrame, 输入的数据
-        price: str, 最新价格
-        open: str, 最近的收盘价（昨天或者其它）
-        volume: str, 当前tick的交易量
-        amount: str, 当前tick的交易额
-        high: str, 当前tick的最高价
-        low: str, 当前tick的最低价
-        label : str, 目标值
-    }
-    :param windows: list, 移动窗口的列表
-    :return: pd.DataFrame
-    """
-    if kwargs is None:
-        kwargs = {}
-    if "data" not in kwargs.keys():
-        kwargs["data"] = pd.DataFrame()
-    if "close" not in kwargs.keys():
-        kwargs["close"] = "close"
-    if "open" not in kwargs.keys():
-        kwargs["open"] = "open"
-    if "volume" not in kwargs.keys():
-        kwargs["volume"] = "volume"
-    if "amount" not in kwargs.keys():
-        kwargs["amount"] = "amount"
-    if "high" not in kwargs.keys():
-        kwargs["high"] = "high"
-    if "low" not in kwargs.keys():
-        kwargs["low"] = "low"
-    if "groupby" not in kwargs.keys():
-        kwargs["groupby"] = "code"
-
-    data = kwargs["data"]
-    open = kwargs["open"]
-    close = kwargs["close"]
-    volume = kwargs['volume']
-    amount = kwargs['amount']
-    high = kwargs['high']
-    low = kwargs['low']
-    if windows is None:
-        windows = [5, 10, 20, 30, 60]
-
-    X = pd.DataFrame(index=data.index)
-
-    if close is not None:
-        for w in windows:
-            X['MA' + str(w)] = ma(data[close], w)
-            X['STD' + str(w)] = std(data[close], w)
-            X['MAX' + str(w)] = max_(data[close], w)
-            X['MIN' + str(w)] = min_(data[close], w)
-            X['BETA' + str(w)] = beta(data[close], w)
-            X['ROC' + str(w)] = roc(data[close], w)
-
+                # 股票收盘对开盘的收益, 与大盘移动平均线相比的强弱
+                X["IDX1_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
+                    datetime).mean().rolling(w).mean()
+                X["IDX2_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
+                    datetime).mean().rolling(w).max()
+                X["IDX3_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
+                    datetime).mean().rolling(w).min()
+                X["IDX4_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
+                    datetime).mean().rolling(w).median()
+            if high is not None:
+                X["KUP"] = (data[high] - data[open]) / data[open]
+                if low is not None:
+                    X["KLEN"] = (data[high] - data[low]) / data[open]
+                    X["KIMD2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
+                    X["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-12)
+                    X["KLOW"] = (data[close] - data[low]) / data[open]
+                    X["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-12)
+                    X["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
+                    X["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
+                    X["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
+                    X["PERF5"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).mean()
+                    X["PERF6"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).max()
+                    X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).min()
+                    X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).median()
     if volume is not None:
-        for w in windows:
-            X['vma' + str(w)] = ma(data[volume], w)
-            X['vstd' + str(w)] = std(data[volume], w)
-
-    if (volume is not None) and (amount is not None):
-        for w in windows:
-            X['vwap' + str(w)] = vwap_series(data[amount], data[volume], n=w)
-
-    if (high is not None) and (low is not None):
-        for w in windows:
-            X['hml' + str(w)] = hml_series(data[high], data[low], n=w)
-
-    if (close is not None) and (high is not None) and (low is not None):
-        for w in windows:
-            X['rsv' + str(w)] = rsv_series(data[close], data[high], data[low], n=w)
+        X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
+        if amount is not None:
+            mean = data[amount] / data[volume]
+            X["MEAN"] = mean / mean.groupby(datetime).mean()
     return X
 
 
@@ -379,8 +172,6 @@ def alpha360(kwargs, shift=60):
         kwargs["high"] = "high"
     if "low" not in kwargs.keys():
         kwargs["low"] = "low"
-    if "groupby" not in kwargs.keys():
-        kwargs["groupby"] = "code"
 
     data = kwargs["data"]
     open = kwargs["open"]
@@ -389,7 +180,7 @@ def alpha360(kwargs, shift=60):
     amount = kwargs['amount']
     high = kwargs['high']
     low = kwargs['low']
-    groupby = kwargs["groupby"]
+    groupby = data.index.names[1]
 
     X = pd.DataFrame()
     if open is not None:

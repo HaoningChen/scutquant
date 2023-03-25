@@ -238,6 +238,13 @@ def feature_selector(df, score, value=0, verbose=0):
 ####################################################
 # 数据清洗
 ####################################################
+def align(x, y):
+    if len(x) > len(y):
+        x = x[x.index.isin(y.index)]
+    elif len(y) > len(x):
+        y = y[y.index.isin(x.index)]
+    return x, y
+
 def percentage_missing(X):
     percent_missing = 100 * ((X.isnull().sum()).sum() / np.product(X.shape))
     return percent_missing
@@ -420,6 +427,10 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
     else:
         X_train, X_test = group_split(X, params=split_params["params"])
         y_train, y_test = X_train.pop(y), X_test.pop(y)
+
+    X_train, y_train = align(X_train, y_train)
+    X_test, y_test = align(X_test, y_test)
+
     print("split data done", "\n")
 
     # 降采样
@@ -440,7 +451,9 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
         print('label norm done', '\n')
     else:
         ymean, ystd = 0, 1
+    print("The distribution of y_train:")
     show_dist(y_train)
+    print("The distribution of y_test:")
     show_dist(y_test)
 
     # 特征值标准化
@@ -477,8 +490,7 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
 
     X_train.dropna(axis=1, how='all', inplace=True)
     X_test.dropna(axis=1, how='all', inplace=True)
-    # y_train = y_train[y_train.index.isin(X_train)]
-    # y_test = y_test[y_test.index.isin(X_test)]
+
     print('norm data done', '\n')
 
     # 特征选择
@@ -497,6 +509,9 @@ def auto_process(X, y, groupby=None, datetime=None, norm='z', label_norm=True, s
             X_train = make_pca(X_train)
             X_test = make_pca(X_test)
             print('PCA done')
+            
+    X_train, y_train = align(X_train, y_train)
+    X_test, y_test = align(X_test, y_test)
     print('all works done', '\n')
     returns = {
         "X_train": X_train,
