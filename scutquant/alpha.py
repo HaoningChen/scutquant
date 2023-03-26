@@ -162,16 +162,24 @@ def make_factors(kwargs=None, windows=None):
     if high is not None:
         for w in windows:
             X["HIGH" + str(w)] = data[high].groupby(groupby).shift(w) / data[high]
+            X["IMAX" + str(w)] = 100 * (w - data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())) / (
+                        data[close] * w)
         if low is not None:
             X["PERF5"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).mean()
             X["PERF6"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).max()
             X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).min()
             X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).median()
+            for w in windows:
+                IMAX = 100 * (w - data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())) / w
+                IMIN = 100 * (w - data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())) / w
+                X["IMXD" + str(w)] = (IMAX - IMIN) / data[close]
             if close is not None:
                 X["MEAN1"] = (data[high] + data[low]) / (2 * data[close])
     if low is not None:
         for w in windows:
             X["LOW" + str(w)] = data[low].groupby(groupby).shift(w) / data[low]
+            X["IMIN" + str(w)] = 100 * (w - data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())) / (
+                    data[close] * w)
     if volume is not None:
         for w in windows:
             X["VOLUME" + str(w)] = data[volume].groupby(groupby).shift(w) / data[volume]
