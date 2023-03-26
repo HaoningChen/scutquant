@@ -144,16 +144,19 @@ def make_factors(kwargs=None, windows=None):
                     X["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
                     X["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
                     X["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
-                    X["PERF5"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).mean()
-                    X["PERF6"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).max()
-                    X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).min()
-                    X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).median()
     if open is not None:
         for w in windows:
             X["OPEN" + str(w)] = data[open].groupby(groupby).shift(w) / data[open]
     if high is not None:
         for w in windows:
             X["HIGH" + str(w)] = data[high].groupby(groupby).shift(w) / data[high]
+        if low is not None:
+            X["PERF5"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).mean()
+            X["PERF6"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).max()
+            X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).min()
+            X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).median()
+            if close is not None:
+                X["MEAN1"] = (data[high] + data[low]) / (2 * data[close])
     if low is not None:
         for w in windows:
             X["LOW" + str(w)] = data[low].groupby(groupby).shift(w) / data[low]
@@ -163,9 +166,9 @@ def make_factors(kwargs=None, windows=None):
         X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
         if amount is not None:
             mean = data[amount] / data[volume]
-            X["MEAN"] = mean / mean.groupby(datetime).mean()
+            X["MEAN2"] = mean / mean.groupby(datetime).mean()
             for w in windows:
-                X["MEAN" + str(w)] = mean.groupby(groupby).shift(w) / mean
+                X["MEAN2" + str(w)] = mean.groupby(groupby).shift(w) / mean
     if amount is not None:
         for w in windows:
             X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
