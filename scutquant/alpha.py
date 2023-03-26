@@ -116,6 +116,14 @@ def make_factors(kwargs=None, windows=None):
             X["CLOSE" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
             X["ROC" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w) - 1) / w
             X["BETA" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w)) / (data[close] * w)
+            X["MA" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).mean()) / data[close]
+            X["STD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[close]
+            X["MAX" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).max()) / data[close]
+            X["MIN" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).min()) / data[close]
+            X["QTLU" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).quantile(0.8)) / data[
+                close]
+            X["QTLD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).quantile(0.2)) / data[
+                close]
         if open is not None:
             X["KMID"] = data[close] / data[open] - 1
             # performance: 股票当日收益率相对大盘的表现
@@ -144,6 +152,10 @@ def make_factors(kwargs=None, windows=None):
                     X["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
                     X["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
                     X["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
+                    for w in windows:
+                        LOW = data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())
+                        HIGH = data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())
+                        X["RSV" + str(w)] = (data[close] - LOW) / (HIGH - LOW + 1e-12)
     if open is not None:
         for w in windows:
             X["OPEN" + str(w)] = data[open].groupby(groupby).shift(w) / data[open]
@@ -163,12 +175,14 @@ def make_factors(kwargs=None, windows=None):
     if volume is not None:
         for w in windows:
             X["VOLUME" + str(w)] = data[volume].groupby(groupby).shift(w) / data[volume]
+            X["VMA" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).mean()) / data[volume]
+            X["VSTD" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[volume]
         X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
         if amount is not None:
             mean = data[amount] / data[volume]
             X["MEAN2"] = mean / mean.groupby(datetime).mean()
             for w in windows:
-                X["MEAN2" + str(w)] = mean.groupby(groupby).shift(w) / mean
+                X["MEAN2_" + str(w)] = mean.groupby(groupby).shift(w) / mean
     if amount is not None:
         for w in windows:
             X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
