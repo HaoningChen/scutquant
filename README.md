@@ -13,7 +13,7 @@
 [scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant):  
 量化工具包, 拥有一个离线量化投资平台所需的所有代码  
 
-[实践案例](https://github.com/HaoningChen/ScutQuant/tree/main/实践案例): 实践出真知, 提供难度适中的任务给大家练手
+[实践案例(内含demo)](https://github.com/HaoningChen/ScutQuant/tree/main/实践案例): 实践出真知, 提供难度适中的任务给大家练手
 
 [教程](https://github.com/HaoningChen/ScutQuant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/tutorial.ipynb): 演示如何使用scutquant完成从数据分析到回测的全流程  
 
