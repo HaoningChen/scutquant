@@ -245,6 +245,7 @@ def align(x, y):
         y = y[y.index.isin(x.index)]
     return x, y
 
+
 def percentage_missing(X):
     percent_missing = 100 * ((X.isnull().sum()).sum() / np.product(X.shape))
     return percent_missing
@@ -341,32 +342,51 @@ def normal_split(X, test_size=0.2):
 def split(X, params=None):
     if params is None:
         params = {
-            "train": 0.6,
-            "valid": 0.2,
-            "test": 0.2
+            "train": 0.7,
+            "valid": 0.3,
         }
     idx = X.index
     lis = [_ for _ in range(len(idx))]
-    sample = random.sample(lis, int(len(lis) * params["test"] + 0.5))
+    sample = random.sample(lis, int(len(lis) * params["valid"] + 0.5))
     idx_sample = idx[sample]
-    X_test = X[X.index.isin(idx_sample)]
+    X_valid = X[X.index.isin(idx_sample)]
     X_train = X[~X.index.isin(idx_sample)]
-    return X_train, X_test
+    return X_train, X_valid
 
 
 def group_split(X, params=None):
     if params is None:
         params = {
-            "train": 0.6,
-            "valid": 0.2,
-            "test": 0.2
+            "train": 0.7,
+            "valid": 0.3,
         }
     time = X.index.get_level_values(0).unique().values
     lis = [_ for _ in range(len(time))]
-    sample = random.sample(lis, int(len(lis) * params["test"] + 0.5))
-    X_test = X[X.index.get_level_values(0).isin(time[sample])]
-    X_train = X[~X.index.isin(X_test.index)]
-    return X_train, X_test
+    sample = random.sample(lis, int(len(lis) * params["valid"] + 0.5))
+    X_valid = X[X.index.get_level_values(0).isin(time[sample])]
+    X_train = X[~X.index.isin(X_valid.index)]
+    return X_train, X_valid
+
+
+def split_data_by_date(data, kwargs):
+    """
+    按照日期拆出(整段)的测试集, 然后剩下的数据按照参数"split_method"和"split_kwargs"拆除训练集和验证机
+    :param data: pd.DataFrame
+    :param kwargs: dict, test_date"必填, 其它选填
+    :return: pd.DataFrame
+    """
+    test_date = kwargs["test_date"]  # 测试集的第一天
+    split_method = "split" if "split_method" not in kwargs.keys() else kwargs["split_method"]
+    split_kwargs = None if "split_kwargs" not in kwargs.keys() else kwargs["split_kwargs"]
+    dtest = data[data.index.get_level_values(0) >= test_date]
+    dtrain = data[~data.index.isin(dtest.index)]
+    if split_method == "normal_split":
+        dtrain, dvalid = normal_split(dtrain, split_kwargs["valid"])
+    elif split_method == "split":
+        dtrain, dvalid = split(dtrain, split_kwargs)
+    else:
+        dtrain, dvalid = group_split(dtrain, split_kwargs)
+    return dtrain, dvalid, dtest
 
 
 ####################################################
@@ -374,17 +394,6 @@ def group_split(X, params=None):
 ####################################################
 def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, orth=True, split_params=None):
     """
-    流程如下：
-    初始化X，计算缺失值百分比，填充/去除缺失值，拆分数据集，判断训练集中目标值类别是否平衡并决定是否降采样（升采样和其它方法还没实现），分离Y并且画出其分布，
-    对剩余的特征进行标准化，计算特征的相关系数判断是否存在多重共线性，如果存在则做PCA（因子正交的一种方法，也可以做对称正交，函数名为symmetric）
-    完成以上工作后，计算X和Y的信息增益（mutual information，本质上是描述X可以解释多少的Y的一种指标），并去除MI Score为0（即无助于解释Y）的特征
-
-    An example:
-
-    data['label'] = make_label(data)
-    data = make_features(data)
-    feature_train, feature_test, label_train, label_test = auto_process(data, 'label', test_size=0.25, norm='r')
-
     :param X: pd.DataFrame，原始特征，包括了目标值
     :param y: str，目标值所在列的列名
     :param groupby: str, 如果是面板数据则输入groupby的依据，序列数据则直接填None
@@ -398,11 +407,12 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     datetime = X.index.names[0]
     if split_params is None:
         split_params = {
-            "method": "group_split",
-            "params": {
-                "train": 0.8,
-                "valid": 0,
-                "test": 0.2,
+            "data": X,
+            "test_date": None,
+            "split_method": "group_split",
+            "split_kwargs": {
+                "train": 0.7,
+                "valid": 0.3,
             }
         }
 
@@ -417,18 +427,11 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     print('clean dataset done', '\n')
 
     # 拆分数据集
-    if split_params["method"] == "normal_split":
-        X_train, X_test = normal_split(X, test_size=split_params["params"]["test"] if split_params["params"][
-                                                                                          "test"] is not None else 0.2)
-        y_train, y_test = X_train.pop(y), X_test.pop(y)
-    elif split_params["method"] == "split":
-        X_train, X_test = split(X, params=split_params["params"])
-        y_train, y_test = X_train.pop(y), X_test.pop(y)
-    else:
-        X_train, X_test = group_split(X, params=split_params["params"])
-        y_train, y_test = X_train.pop(y), X_test.pop(y)
+    X_train, X_valid, X_test = split_data_by_date(X, split_params)
+    y_train, y_valid, y_test = X_train.pop(y), X_valid.pop(y), X_test.pop(y)
 
     X_train, y_train = align(X_train, y_train)
+    X_valid, y_valid = align(X_valid, y_valid)
     X_test, y_test = align(X_test, y_test)
 
     print("split data done", "\n")
@@ -444,16 +447,18 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     if label_norm:
         if groupby is None:
             ymean, ystd = y_train.mean(), y_train.std()
-            y_train, y_test = zscorenorm(y_train, ymean, ystd), zscorenorm(y_test, ymean, ystd)
+            y_train, y_valid = zscorenorm(y_train, ymean, ystd), zscorenorm(y_valid, ymean, ystd)
         else:
-            ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()
+            ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()  # 是否应该使用滞后项
             y_train = zscorenorm(y_train, y_train.groupby(datetime).mean(), y_train.groupby(datetime).std())
-            y_test = zscorenorm(y_test, ymean, ystd)
+            y_valid = zscorenorm(y_valid, y_valid.groupby(datetime).mean(), y_valid.groupby(datetime).std())
         print('label norm done', '\n')
     else:
-        ymean, ystd = 0, 1
+        ymean, ystd = None, None
     print("The distribution of y_train:")
     show_dist(y_train)
+    print("The distribution of y_valid:")
+    show_dist(y_valid)
     print("The distribution of y_test:")
     show_dist(y_test)
 
@@ -462,34 +467,42 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
         if norm == 'z':
             mean, std = X_train.mean(), X_train.std()
             X_train = zscorenorm(X_train)
-            X_test = zscorenorm(X_test, mean, std)
+            X_valid, X_test = zscorenorm(X_valid, mean, std), zscorenorm(X_test, mean, std)
         elif norm == 'r':
             median = X_train.median()
             X_train = robustzscorenorm(X_train)
-            X_test = robustzscorenorm(X_test, median)
+            X_valid, X_test = robustzscorenorm(X_valid, median), robustzscorenorm(X_test, median)
         elif norm == 'm':
             Min, Max = X_train.min(), X_train.max()
             X_train = minmaxnorm(X_train)
-            X_test = minmaxnorm(X_test, Min, Max)
+            X_valid, X_test = minmaxnorm(X_valid, Min, Max), minmaxnorm(X_test, Min, Max)
+
         X_train = clean(X_train)
+        X_valid = clean(X_valid)
         X_test = clean(X_test)
     else:
         if norm == 'z':
             mean, std = X_train.groupby(datetime).mean(), X_train.groupby(datetime).std()
             X_train = zscorenorm(X_train, mean, std)
+            X_valid = zscorenorm(X_valid, X_valid.groupby(datetime).mean(), X_valid.groupby(datetime).std())
             X_test = zscorenorm(X_test, X_test.groupby(datetime).mean(), X_test.groupby(datetime).std())
         elif norm == 'r':
             median = X_train.groupby(datetime).median()
             X_train = robustzscorenorm(X_train, median)
+            X_valid = robustzscorenorm(X_valid, X_valid.groupby(datetime).median())
             X_test = robustzscorenorm(X_test, X_test.groupby(datetime).median())
         elif norm == 'm':
             Min, Max = X_train.groupby(datetime).min(), X_train.groupby(datetime).max()
             X_train = minmaxnorm(X_train, Min, Max)
+            X_valid = minmaxnorm(X_valid, X_valid.groupby(datetime).min(), X_valid.groupby(datetime).max())
             X_test = minmaxnorm(X_test, X_test.groupby(datetime).min(), X_test.groupby(datetime).max())
+
         X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
+        X_valid = X_valid.groupby([groupby]).fillna(method='ffill').dropna()
         X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
 
     X_train.dropna(axis=1, how='all', inplace=True)
+    X_valid.dropna(axis=1, how='all', inplace=True)
     X_test.dropna(axis=1, how='all', inplace=True)
 
     print('norm data done', '\n')
@@ -500,6 +513,7 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
         print(mi_score)
         print(mi_score.describe())
         X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
+        X_valid = feature_selector(X_valid, mi_score)
         X_test = feature_selector(X_test, mi_score)
 
     # 特征正则化
@@ -508,15 +522,19 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
         if r > 0.35:
             print('To solve multicollinearity problem, orthogonal method will be applied')
             X_train = make_pca(X_train)
+            X_valid = make_pca(X_valid)
             X_test = make_pca(X_test)
             print('PCA done')
 
     X_train, y_train = align(X_train, y_train)
+    X_valid, y_valid = align(X_valid, y_valid)
     X_test, y_test = align(X_test, y_test)
     print('all works done', '\n')
     returns = {
         "X_train": X_train,
         "y_train": y_train,
+        "X_valid": X_valid,
+        "y_valid": y_valid,
         "X_test": X_test,
         "y_test": y_test,
         "ymean": ymean,
@@ -538,6 +556,7 @@ def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=
     :param logspace_params: list[min, max, n_sample], 超参数搜索空间和采样的样本量
     :param cv: 参考sklearn的文档 'Determines the cross-validation splitting strategy.'
     :param max_iter: int, 最大迭代次数
+    :param verbose: int, 等于1时输出使用的线性回归方法
     :return: model
     """
     if alphas is None:
@@ -907,6 +926,7 @@ def make_fourier_features(X, freq, order, name=None, time=None):
     :param freq: int, 频率
     :param order: int, 阶数
     :param name: str, 自定义傅里叶特征的名字
+    :param time: 表示时间的变量
     :return: pd.DataFrame, 加入了傅里叶特征的数据集
     """
     if time is None:
