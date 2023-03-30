@@ -397,7 +397,7 @@ def split_data_by_date(data, kwargs):
     split_kwargs = None if "split_kwargs" not in kwargs.keys() else kwargs["split_kwargs"]
     dtest = data[data.index.get_level_values(0) >= test_date]
     dtrain = data[~data.index.isin(dtest.index)]
-    if split_method == "normal_split":
+    if split_method == "split_by_date":
         dtrain, dvalid = split_by_date(dtrain, split_kwargs["train_date"], split_kwargs["valid_date"])
     elif split_method == "split":
         dtrain, dvalid = split(dtrain, split_kwargs)
