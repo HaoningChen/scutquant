@@ -331,15 +331,26 @@ def bootstrap(X, col, val=0, windows=5, n=0.35):
 ####################################################
 # 拆分数据集
 ####################################################
-def normal_split(X, test_size=0.2):
-    length = X.shape[0] - 1
-    train_rows = int(length * (1 - test_size))
-    X_train = X[0:train_rows].copy()
-    X_test = X[train_rows - 1:-1].copy()
-    return X_train, X_test
+def split_by_date(X, train_date, valid_date):
+    """
+    :param X: pd.DataFrame
+    :param train_date: str, 训练集的最后一天, 例如“2020-12-28”
+    :param valid_date: str, 验证集最后一天, 例如"2022-12-28"
+    :return: pd.DataFrame, pd.DataFrame
+    """
+    X_train = X[X.index.get_level_values(0) <= train_date]
+    X_valid = X[X.index.get_level_values(0) <= valid_date]
+    X_valid = X_valid[~X_valid.index.isin(X_train.index)]
+    return X_train, X_valid
 
 
 def split(X, params=None):
+    """
+    相当于sklearn的train_test_split
+    :param X: pd.DataFrame
+    :param params: dict, 键名包括 "train", "valid", 值为比例
+    :return: pd.DataFrame, pd.DataFrame
+    """
     if params is None:
         params = {
             "train": 0.7,
@@ -355,6 +366,12 @@ def split(X, params=None):
 
 
 def group_split(X, params=None):
+    """
+    以当天的所有股票为整体, 随机按比例拆出若干天作为训练集和验证集
+    :param X: pd.DataFrame
+    :param params: dict, 键名包括 "train", "valid", 值为比例
+    :return: pd.DataFrame, pd.DataFrame
+    """
     if params is None:
         params = {
             "train": 0.7,
@@ -381,7 +398,7 @@ def split_data_by_date(data, kwargs):
     dtest = data[data.index.get_level_values(0) >= test_date]
     dtrain = data[~data.index.isin(dtest.index)]
     if split_method == "normal_split":
-        dtrain, dvalid = normal_split(dtrain, split_kwargs["valid"])
+        dtrain, dvalid = split_by_date(dtrain, split_kwargs["train_date"], split_kwargs["valid_date"])
     elif split_method == "split":
         dtrain, dvalid = split(dtrain, split_kwargs)
     else:
