@@ -22,7 +22,7 @@
 联系方式(目前): 2434722850@qq.com
 
 ## 环境要求  
-(最好有) Anaconda 
+(最好有) Anaconda3   
 python3.7 及以上  
 Windows10 64位  
 [requirements.txt](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/requirements.txt)
