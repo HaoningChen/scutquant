@@ -5,11 +5,7 @@
 
 纯代码版本请转到[scutquant_pure](https://github.com/chn489/scutquant_pure)
 
-## 导航
-
-
-[data](https://github.com/HaoningChen/ScutQuant/tree/main/data): 存放练习数据;  
-
+## 导航  
 [scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant):  
 量化工具包, 拥有一个离线量化投资平台所需的所有代码  
 
