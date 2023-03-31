@@ -24,5 +24,5 @@
 ## 环境要求  
 (最好有) Anaconda3   
 python3.7 及以上  
-Windows10 64位  
+Windows10 64位; Ubuntu 20.04.3(20及以上应该都可以)  
 [requirements.txt](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/requirements.txt)
