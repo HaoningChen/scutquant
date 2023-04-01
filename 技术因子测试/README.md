@@ -1,6 +1,6 @@
 ## 关于测试  
 股票池: 沪深300  
-测试时间: 2006-01-01~2016-12-31(剔除缺失值)  
+测试时间: 2006-01-01~2022-11-30(剔除缺失值)  
 
 ## 结论  
 记录了截止当前版本的技术因子表现(源代码见[scutquant.alpha.make_factors()](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py))  
