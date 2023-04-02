@@ -1,14 +1,14 @@
 import pandas as pd
 
 
-def update_x(x1, x2, n, time='time'):
+def update_x(x1, x2, n):
     # 先入先出栈，容纳指定tick数量的面板数据
     x = pd.concat([x1, x2], axis=0)
-    tx = x[time].unique()
+    tx = x.index.get_level_values(0).unique()
     get_predict = False
     if len(tx) >= n:
         t_pop = tx[0]
-        x = x[x[time] != t_pop]
+        x = x[x.index.get_level_values(0) != t_pop]
         get_predict = True
     return x, get_predict
 
@@ -19,78 +19,50 @@ def update_factors(x, f_kwargs):
     return f_kwargs
 
 
-def buy(code, volume=10, unit='lot'):
-    if unit == 'lot':
-        volume *= 100
-    kwargs = dict.fromkeys(code, volume)
-    return kwargs
-
-
-def sell(code, volume=10, unit='lot'):
-    if unit == 'lot':
-        volume *= 100
-    kwargs = dict.fromkeys(code, volume)
-    return kwargs
-
-
-def simulate(x, index, get_predict, factor_kwargs, xmean, xstd, ymean, ystd, model, price='price', time='time',
-             index_level='code', buy_=0.0005, sell_=-0.0005, buy_volume=10, sell_volume=10, unit='lot'):
+def simulate(x, current_time, get_predict, factor_kwargs, ymean, ystd, model, strategy, cash_available=None,
+             price='price', volume="volume"):
     """
-    :param x: 用于构建因子的数据，滚动更新（输入的是更新过的数据）
-    :param index: 当前时间
+    :param x: 用于构建因子的数据，滚动更新（输入的是更新过的数据）, 需要额外增加price(shift(-1))和volume(shift(-1))
+    :param current_time: 当前时间
     :param get_predict: 根据当前x的长度决定是否构建因子并进行预测
     :param factor_kwargs: 构建因子的kwargs
-    :param xmean: 用于对因子标准化的x_mean
-    :param xstd: 用于对因子标准化的x_std
     :param ymean: 用于还原预测值的y_mean
     :param ystd: 用于还原预测值的y_std
     :param model: 用于预测的模型
-    :param price: 用于更新current_price的列的名字
-    :param time: 用于筛选当前tick的predict, 从而避免预测值包括不止一个时间段的问题
-    :param index_level: 股票代码（或其他标的资产的名字）所在的index的名字
-    :param buy_: 触发买入的门槛
-    :param sell_: 触发卖出的门槛
-    :param buy_volume: 买入数量
-    :param sell_volume: 卖出数量
-    :param unit: 单位，在中国是按手（'lot'），美国是按股（'share'）
+    :param strategy: 用于生成指令的策略
+    :param cash_available: 生成指令时，账户的可用资金
+    :param price: 用于更新成交价格(一般为shift(-1))
+    :param volume: 成交量(一般为shift(-1))
     :return: order字典和current_price字典
     """
     from . import alpha
-    buy_list = []
-    sell_list = []
-    current_price = x.droplevel(0)[price].to_dict()
     if get_predict:
         factor_kwargs = update_factors(x, factor_kwargs)
-        # print(factor_kwargs['data'])
         factors = alpha.make_factors(factor_kwargs)
-        factors -= xmean
-        factors /= xstd
-        factors.clip(-5, 5, inplace=True)
+        factors -= x.groupby(x.index.names[1]).mean()
+        factors /= x.groupby(x.index.names[1]).std()
+        factors.clip(-3, 3, inplace=True)
         factors = factors.fillna(method='ffill').dropna(axis=0)
 
         predict = model.predict(factors)
         predict = pd.DataFrame(predict, index=factors.index, columns=['predict'])
-        predict += ymean
-        predict *= ystd
-        predict['t'] = x[time]
-        predict = predict[predict['t'] == index]
+        predict["predict"] += ymean  # 考虑换成截面上的均值的均值
+        predict["predict"] *= ystd  # 考虑换成截面上的标准差的均值
+        predict = predict[predict.index.get_level_values(0) == current_time]
+        predict["price"] = x[x.index.get_level_values(0) == current_time][price]
+        predict["volume"] = x[x.index.get_level_values(0) == current_time][volume]
     else:
         predict = pd.DataFrame()
     if len(predict) > 0:
-        # print(predict.index)
-        pred_b = predict[predict['predict'].values >= buy_]
-        pred_s = predict[predict['predict'].values <= sell_]
-        if len(pred_b) > 0:
-            buy_list += [i for i in pred_b.index.get_level_values(index_level).to_list()]
-        if len(pred_s) > 0:
-            sell_list += [i for i in pred_s.index.get_level_values(index_level).to_list()]
-    buy_dict = buy(code=buy_list, volume=buy_volume, unit=unit)
-    sell_dict = sell(code=sell_list, volume=sell_volume, unit=unit)
-    order = {
-        'buy': buy_dict,
-        'sell': sell_dict
+        order, current_price = strategy.to_signal(predict, cash_available=cash_available)
+    else:
+        order = None
+        current_price = None
+    dic = {
+        "order": order,
+        "current_price": current_price,
     }
-    return order, current_price
+    return dic
 
 
 def generate(data, strategy, cash_available=None):

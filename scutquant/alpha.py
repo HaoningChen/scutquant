@@ -231,11 +231,29 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             X["MEAN2"] = mean / mean.groupby(datetime).mean()
             for w in windows:
                 X["MEAN2_" + str(w)] = mean.groupby(groupby).shift(w) / mean
+            del mean
+        if close is not None:
+            data["log_vol"] = np.log(data[volume])
+            # The correlation between absolute close price and log scaled trading volume
+            X["CORR"] = \
+                data[[close, "log_vol"]].groupby(datetime).apply(lambda x: x[close].corr(x["log_vol"])) * \
+                (data[close] / data["log_vol"])
+            for w in windows:
+                data["r_close" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
+                data["r_vol" + str(w)] = data["log_vol"].groupby(groupby).shift(w) / data["log_vol"]
+                # The correlation between price change ratio and volume change ratio
+                X["CORD" + str(w)] = data[["r_close" + str(w), "r_vol" + str(w)]].groupby(groupby).apply(
+                    lambda x: x["r_close" + str(w)].corr(x["r_vol" + str(w)])) * \
+                                     (data["r_close" + str(w)] / data["r_vol" + str(w)])
+                del data["r_close" + str(w)]
+                del data["r_vol" + str(w)]
+            del data["log_vol"]
+
     if amount is not None:
         for w in windows:
             X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
     end = time.time()
-    print("time used:", end-start)
+    print("time used:", end - start)
     return X
 
 
@@ -298,5 +316,5 @@ def alpha360(kwargs, shift=60):
         for i in range(1, shift + 1):
             X[amount + str(i)] = group.shift(i) / (data[close] * data[volume])
     end = time.time()
-    print("time used:", end-start)
+    print("time used:", end - start)
     return X

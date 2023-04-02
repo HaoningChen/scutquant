@@ -1,4 +1,4 @@
-from keras import layers, regularizers
+from tensorflow.keras import layers, regularizers
 from tensorflow import keras
 
 """
