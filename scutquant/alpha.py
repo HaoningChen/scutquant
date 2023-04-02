@@ -127,6 +127,10 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
     X = pd.DataFrame(index=data.index)
 
     if close is not None:
+        for i in range(1, 5):
+            X["RET1_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1)
+            X["RET2_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1).groupby(datetime).rank(
+                pct=True)
         for w in windows:
             X["CLOSE" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
             # https://www.investopedia.com/terms/r/rateofchange.asp
@@ -159,6 +163,7 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             print("MACD done")
 
         if open is not None:
+            X["DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
             X["KMID"] = data[close] / data[open] - 1
             # performance: 股票当日收益率相对大盘的表现
             X["PERF1"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).mean()
@@ -201,10 +206,6 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             X["IMAX" + str(w)] = 100 * (w - data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())) / (
                     data[close] * w)
         if low is not None:
-            X["PERF5"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).mean()
-            X["PERF6"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).max()
-            X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).min()
-            X["PERF7"] = (data[high] / data[low] - 1) / (data[high] / data[low] - 1).groupby(datetime).median()
             for w in windows:
                 IMAX = 100 * (w - data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())) / w
                 IMIN = 100 * (w - data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())) / w
@@ -232,23 +233,6 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             for w in windows:
                 X["MEAN2_" + str(w)] = mean.groupby(groupby).shift(w) / mean
             del mean
-        if close is not None:
-            data["log_vol"] = np.log(data[volume])
-            # The correlation between absolute close price and log scaled trading volume
-            X["CORR"] = \
-                data[[close, "log_vol"]].groupby(datetime).apply(lambda x: x[close].corr(x["log_vol"])) * \
-                (data[close] / data["log_vol"])
-            for w in windows:
-                data["r_close" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
-                data["r_vol" + str(w)] = data["log_vol"].groupby(groupby).shift(w) / data["log_vol"]
-                # The correlation between price change ratio and volume change ratio
-                X["CORD" + str(w)] = data[["r_close" + str(w), "r_vol" + str(w)]].groupby(groupby).apply(
-                    lambda x: x["r_close" + str(w)].corr(x["r_vol" + str(w)])) * \
-                                     (data["r_close" + str(w)] / data["r_vol" + str(w)])
-                del data["r_close" + str(w)]
-                del data["r_vol" + str(w)]
-            del data["log_vol"]
-
     if amount is not None:
         for w in windows:
             X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
