@@ -144,6 +144,18 @@ def minmaxnorm(X, Min=None, Max=None, clip=True):
     return X
 
 
+def ranknorm(X, groupby=None, clip=True):
+    if groupby is None:
+        X_rank = X.rank(pct=True)
+    else:
+        X_rank = X.groupby(groupby).rank(pct=True)
+    X_rank -= 0.5
+    X_rank *= 3.46
+    if clip:
+        X_rank.clip(-3, 3, inplace=True)
+    return X_rank
+
+
 def make_pca(X):
     from sklearn.decomposition import PCA
     index = X.index
@@ -493,7 +505,9 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
             Min, Max = X_train.min(), X_train.max()
             X_train = minmaxnorm(X_train)
             X_valid, X_test = minmaxnorm(X_valid, Min, Max), minmaxnorm(X_test, Min, Max)
-
+        else:
+            X_train = ranknorm(X_train)
+            X_valid, X_test = ranknorm(X_valid), ranknorm(X_test)
         X_train = clean(X_train)
         X_valid = clean(X_valid)
         X_test = clean(X_test)
@@ -513,6 +527,10 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
             X_train = minmaxnorm(X_train, Min, Max)
             X_valid = minmaxnorm(X_valid, X_valid.groupby(datetime).min(), X_valid.groupby(datetime).max())
             X_test = minmaxnorm(X_test, X_test.groupby(datetime).min(), X_test.groupby(datetime).max())
+        else:
+            X_train = ranknorm(X_train, groupby=datetime)
+            X_valid = ranknorm(X_valid, groupby=datetime)
+            X_test = ranknorm(X_test, groupby=datetime)
 
         X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
         X_valid = X_valid.groupby([groupby]).fillna(method='ffill').dropna()
