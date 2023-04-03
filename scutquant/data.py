@@ -16,7 +16,7 @@ def get_index_stock_cons(index_code='000300', freq="daily", start="20230330", en
 
     example:
 
-    data = upgrade_index_stock_cons()
+    data = get_index_stock_cons()
     """
     cons = ak.index_stock_cons(symbol=index_code)
     df = pd.DataFrame()
