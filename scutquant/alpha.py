@@ -127,6 +127,8 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
     X = pd.DataFrame(index=data.index)
 
     if close is not None:
+        data["ret"] = data[close].groupby(groupby).shift(1) / data[close] - 1
+        mean_ret = data["ret"].groupby(datetime).mean()
         for i in range(1, 5):
             X["RET1_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1)
             X["RET2_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1).groupby(datetime).rank(
@@ -151,6 +153,12 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             # The 20% quantile of past d day's close price, divided by latest close price to remove unit
             X["QTLD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).quantile(0.2)) / data[
                 close]
+            # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数
+            # 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数(rolling=30, 60), 则有可能是个股发生了异动,
+            # 可根据异动的方向选择个股与大盘的多空组合
+            X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
+        del data["ret"]
+        del mean_ret
         if use_macd_features:
             # 一眼丁真, 鉴定为垃圾因子
             # 怀疑跟MA因子相关性太高导致失效
@@ -183,6 +191,14 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             if high is not None:
                 X["KUP"] = (data[high] - data[open]) / data[open]
                 if low is not None:
+                    l9 = data[low].groupby(groupby).transform(lambda x: x.rolling(9).min())
+                    h9 = data[high].groupby(groupby).transform(lambda x: x.rolling(9).max())
+                    # KDJ指标
+                    X["KDJ_K"] = (data[close] - l9) / (h9 - l9) * 100
+                    X["KDJ_D"] = X["KDJ_K"].groupby(groupby).transform(lambda x: x.rolling(3).mean())
+                    # X["KDJ_J"] = 3 * X["KDJ_D"] - 2 * X["KDJ_K"]  # K和D的线性组合，没必要加上
+                    del l9
+                    del h9
                     X["KLEN"] = (data[high] - data[low]) / data[open]
                     X["KIMD2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
                     X["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-12)
