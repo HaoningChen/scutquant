@@ -21,7 +21,7 @@
 ### [executor](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/executor.py):  
 在account, strategy和signal_generator的基础上进行封装而成的执行器, 负责策略的执行和更新account  
 ### [report](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/report.py):  
-报告回测结果, 也可用于测试因子单调性(见group_return_ana()函数)  
+报告回测结果, 也可用于测试因子和模型预测值的单调性(见group_return_ana()函数)  
 
 
 ## Workflow  
