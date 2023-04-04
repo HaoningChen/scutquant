@@ -1,4 +1,4 @@
-# ScutQuant
+# scutquant
 华南理工大学量化投资协会（华工量协）欢迎您
 
 代码和介绍见[scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant)
