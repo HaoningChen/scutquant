@@ -23,7 +23,7 @@
 ### [report](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/report.py):  
 报告回测结果, 也可用于测试因子和模型预测值的单调性(见group_return_ana()函数)  
 
-各部分基本上都能单独拿出来使用, 耦合度非常低(在底层代码基础上封装的executor和需要实时计算因子值的signal_generator模块除外)
+### 各部分基本上都能单独拿出来使用, 耦合度非常低(在底层代码基础上封装的executor和需要实时计算因子值的signal_generator模块除外)
 
 ## Workflow  
 ![1](https://user-images.githubusercontent.com/101194077/210078909-6f1f7381-68cf-4765-8c8c-5feaf68f39c0.png)
