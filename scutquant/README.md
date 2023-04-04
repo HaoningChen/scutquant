@@ -26,7 +26,8 @@
 ### 各部分基本上都能单独拿出来使用, 耦合度非常低(在底层代码基础上封装的executor和需要实时计算因子值的signal_generator模块除外)
 
 ## Workflow  
-![1](https://user-images.githubusercontent.com/101194077/210078909-6f1f7381-68cf-4765-8c8c-5feaf68f39c0.png)
+![1](https://user-images.githubusercontent.com/101194077/229791039-833128a9-320b-49be-9848-5b47e2b2f4a8.png)
+
 
 
 ## 数据处理流程（到执行回测前）  
