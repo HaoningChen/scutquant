@@ -3,6 +3,8 @@
 
 如果有任何的意见和建议，欢迎在issue区留言或者直接提pr！
 
+代码和介绍见[scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant)
+
 纯代码版本请转到[scutquant_pure](https://github.com/chn489/scutquant_pure)
 
 ## 导航  
