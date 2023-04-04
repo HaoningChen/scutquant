@@ -41,23 +41,32 @@
     (2)截面回归（或时序回归），即 因子检验方法 (1)，并做t检验
 """
 import pandas as pd
-import numpy as np
 import time
 
 
-def ewm(x):
-    # exp_weighted_mean
-    a = 1 - 2 / (1 + len(x))
-    w = a ** np.arange(len(x))[::-1]
-    w /= w.sum()
-    return np.nansum(w * x)
+def cal_dif(prices, n=12, m=26):
+    ema_n = prices.ewm(span=n, min_periods=n - 1).mean()
+    ema_m = prices.ewm(span=m, min_periods=m - 1).mean()
+    dif = ema_n - ema_m
+    return dif
 
 
-def ema(X, groupby, window):
-    return X.groupby(groupby).transform(lambda x: x.rolling(window).apply(ewm))
+def cal_dea(dif, k=9):
+    dea = dif.ewm(span=k, min_periods=k - 1).mean()
+    return dea
 
 
-def make_factors(kwargs=None, windows=None, use_macd_features=False):
+def cal_rsi(prices, n=14):
+    deltas = prices.diff()
+    seed = deltas[:n + 1]
+    up = seed[seed >= 0].sum() / n
+    down = -seed[seed < 0].sum() / n
+    rs = up / (down + 1e-12)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def make_factors(kwargs=None, windows=None):
     """
     面板数据适用，序列数据请移步 make_factors_series
 
@@ -90,7 +99,6 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
         low: str, 当前tick的最低价
     }
     :param windows: list, 移动窗口的列表
-    :param use_macd_features: 是否计算MACD, 计算会消耗大量时间
     :return: pd.DataFrame
     """
     start = time.time()
@@ -129,6 +137,8 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
     if close is not None:
         data["ret"] = data[close].groupby(groupby).shift(1) / data[close] - 1
         mean_ret = data["ret"].groupby(datetime).mean()
+        X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
+        X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
         for i in range(1, 5):
             X["RET1_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1)
             X["RET2_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1).groupby(datetime).rank(
@@ -157,18 +167,9 @@ def make_factors(kwargs=None, windows=None, use_macd_features=False):
             # 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数(rolling=30, 60), 则有可能是个股发生了异动,
             # 可根据异动的方向选择个股与大盘的多空组合
             X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
+            X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
         del data["ret"]
         del mean_ret
-        if use_macd_features:
-            # 一眼丁真, 鉴定为垃圾因子
-            # 怀疑跟MA因子相关性太高导致失效
-            print("Processing MACD factors...")
-            X["DIF"] = (ema(data[close], groupby, 12) - ema(data[close], groupby, 26)) / data[close]
-            print("DIF done")
-            X["DEA"] = ema(X["DIF"], groupby, 9) / data[close]
-            print("DEA done")
-            X["MACD"] = 2 * (X["DIF"] - X["DEA"])
-            print("MACD done")
 
         if open is not None:
             X["DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
