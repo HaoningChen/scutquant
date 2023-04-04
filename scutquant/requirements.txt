@@ -1,5 +1,6 @@
 numpy >= 1.21.6
 pandas >= 1.1.5
+sklearn >= 0.0.1
 matplotlib >= 3.4.1
 xgboost >= 1.6.2
 lightgbm >= 3.3.0
