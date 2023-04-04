@@ -11,7 +11,7 @@
 ### [scutquant](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/scutquant.py):  
 包含了scutquant包最核心的数据分析和数据处理功能, 还有一些快速建模函数(支持一键训练线性回归模型(基于sklearn), hybrid模型和lightGBM)   
 ### [models](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/models.py):  
-使用tensorflow和keras写的model类, 可以方便地一键训练自定义的神经网络. 目前已实现的网络有DNN, LSTM, Bi-LSTM和Attention  
+使用tensorflow和keras写的模型, 可以方便地一键训练自定义的神经网络. 目前已实现的网络有DNN, LSTM, Bi-LSTM和Attention  
 ### [account](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/account.py):  
 账户, 回测时使用虚拟账户进行仿真交易  
 ### [strategy](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/strategy.py):  
