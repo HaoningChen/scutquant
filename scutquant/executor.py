@@ -16,7 +16,7 @@ def prepare(predict, data, price, volume):
     data1 = data1.reset_index()
     data1 = data1.set_index(predict.index.names).sort_index()
     predict['price'] = data1[price]
-    predict['volume'] = data1[volume]
+    predict['volume'] = data1[volume]  # 当天的交易量, 假设交易量不会发生大的跳跃
     predict.index.names = ['time', 'code']
     predict["price"] = predict["price"].groupby(["code"]).shift(-1)  # 指令是T时生成的, 但是T+1执行, 所以是shift(-1)
     return predict.dropna()
@@ -132,7 +132,7 @@ class Executor:
                 order, trade = self.user_account.check_order(order, current_price)
 
                 if verbose == 1:
-                    print(t, '\n', order, '\n')
+                    print(t, '\n', "buy:", '\n', order["buy"], '\n', "sell:", order["sell"], '\n')
 
                 self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
                                              cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)
