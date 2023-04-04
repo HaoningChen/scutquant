@@ -137,8 +137,9 @@ def make_factors(kwargs=None, windows=None):
     if close is not None:
         data["ret"] = data[close].groupby(groupby).shift(1) / data[close] - 1
         mean_ret = data["ret"].groupby(datetime).mean()
-        X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
-        X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
+        # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
+        # X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
+        # X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
         for i in range(1, 5):
             X["RET1_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1)
             X["RET2_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1).groupby(datetime).rank(
@@ -166,8 +167,10 @@ def make_factors(kwargs=None, windows=None):
             # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数
             # 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数(rolling=30, 60), 则有可能是个股发生了异动,
             # 可根据异动的方向选择个股与大盘的多空组合
-            X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
-            X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
+            X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(
+                lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
+            # RSI指标
+            # X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
         del data["ret"]
         del mean_ret
 
