@@ -6,7 +6,7 @@ def update_x(x1, x2, n):
     x = pd.concat([x1, x2], axis=0)
     tx = x.index.get_level_values(0).unique()
     get_predict = False
-    if len(tx) >= n:
+    if len(tx) >= n:  # 到达容量后, pop掉时间最前的tick
         t_pop = tx[0]
         x = x[x.index.get_level_values(0) != t_pop]
         get_predict = True
@@ -22,6 +22,8 @@ def update_factors(x, f_kwargs):
 def simulate(x, current_time, get_predict, factor_kwargs, ymean, ystd, model, strategy, cash_available=None,
              price='price', volume="volume"):
     """
+    # 用于模拟实盘, 即动态更新因子和预测值
+
     :param x: 用于构建因子的数据，滚动更新（输入的是更新过的数据）, 需要额外增加price(shift(-1))和volume(shift(-1))
     :param current_time: 当前时间
     :param get_predict: 根据当前x的长度决定是否构建因子并进行预测

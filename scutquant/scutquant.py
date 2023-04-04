@@ -144,15 +144,13 @@ def minmaxnorm(X, Min=None, Max=None, clip=True):
     return X
 
 
-def ranknorm(X, groupby=None, clip=True):
+def ranknorm(X, groupby=None):
     if groupby is None:
         X_rank = X.rank(pct=True)
     else:
         X_rank = X.groupby(groupby).rank(pct=True)
     X_rank -= 0.5
     X_rank *= 3.46
-    if clip:
-        X_rank.clip(-3, 3, inplace=True)
     return X_rank
 
 

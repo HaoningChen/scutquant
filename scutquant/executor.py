@@ -34,7 +34,7 @@ class Executor:
             acc = {}
         keys = acc.keys()
         if "cash" not in keys:
-            acc["cash"] = 1e9
+            acc["cash"] = 1e8
         if "position" not in keys:
             acc["position"] = None
         if "available" not in keys:
@@ -105,7 +105,7 @@ class Executor:
         :return: self
         """
 
-        def check_names(index=data.index, predict='predict',  price='price'):
+        def check_names(index=data.index, predict='predict', price='price'):
             names = index.names
             if names[0] != 'time' or names[1] != 'code':
                 raise ValueError("index should be like [('time', 'code')]")
@@ -132,7 +132,7 @@ class Executor:
                 order, trade = self.user_account.check_order(order, current_price)
 
                 if verbose == 1:
-                    print(order, '\n')
+                    print(t, '\n', order, '\n')
 
                 self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
                                              cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)

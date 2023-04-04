@@ -1,12 +1,12 @@
-def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit=None, max_volume=0.05):
+def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit="lot", max_volume=0.05):
     """
     生成每笔交易的交易量
     :param asset: list
     :param price: dict {"code": price}
     :param volume: dict {"code": volume}
     :param cash_available: float
-    :param num: int, default volume
-    :param unit: string, "lot" or None
+    :param num: int, default volume, the unit is lot
+    :param unit: string, "lot" or "share", default lot
     :param max_volume: float, 最大交易手数是volume的max_volume倍
     :return: list, 交易量, 单位是允许交易的最小单位(股或者手)
     """
@@ -15,25 +15,24 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
         for k in volume.keys():
             max_vol[k] = int(volume[k] * max_volume + 0.5)  # 总交易量*max_volume, 四舍五入
     if (price is None) or (cash_available is None):
-        n = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等
-        if unit == 'lot':
-            for i in range(len(n)):
-                n[i] = n[i] * 100
+        n_volume = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等, 这里用默认
+        if unit == 'share':  # 默认单位是手, 如果想按股交易就把n_volume乘100
+            for i in range(len(n_volume)):
+                n_volume[i] *= 100
     else:
         invest = cash_available / len(asset) if len(asset) != 0 else 0  # 将可用资金平均地投资到可投资的资产中
-        n = []
+        n_volume = []
         if unit == 'lot':
             for a in asset:
                 # 考虑到大单不一定成交，最大不超过max_volume手
-                n.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= max_vol[a]
-                         else max_vol[a])
-            for i in range(len(n)):
-                n[i] = n[i] * 100
+                # 如果是按手下单，将每份的资金除以(price * 100). 因为price是每股的价格
+                n_volume.append(int(invest / (price[a] * 100)) if int(invest / (price[a] * 100)) <= max_vol[a]
+                                else max_vol[a])
         else:
             for a in asset:
-                # 考虑到大单不一定成交，最大不超过max_volume手, 即max_volume * 100股
-                n.append(int(invest / price[a]) if int(invest / price[a]) <= max_vol[a] else max_vol[a])
-    return n
+                # 考虑到大单不一定成交，最大不超过max_volume股(当unit设为股时，默认给出的volume也是按股为单位)
+                n_volume.append(int(invest / price[a]) if int(invest / price[a]) <= max_vol[a] else max_vol[a])
+    return n_volume
 
 
 def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.05):
