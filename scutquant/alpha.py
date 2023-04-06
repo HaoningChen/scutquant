@@ -169,6 +169,8 @@ def make_factors(kwargs=None, windows=None):
             # 可根据异动的方向选择个股与大盘的多空组合
             X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(
                 lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
+            X["CORR2_" + str(w)] = X["RET2_" + str(1)].groupby(groupby).transform(
+                lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
             # RSI指标
             # X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
         del data["ret"]
@@ -253,6 +255,7 @@ def make_factors(kwargs=None, windows=None):
             for w in windows:
                 X["MEAN2_" + str(w)] = mean.groupby(groupby).shift(w) / mean
             del mean
+
     if amount is not None:
         for w in windows:
             X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
