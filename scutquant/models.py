@@ -149,6 +149,7 @@ class Attention:
     """
     复现了Attention Is All You Need 中的部分结构(指encoder, decoder目前还没实现)
     """
+
     def __init__(self, n_attentions=8, n_encoders=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
                  l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
         if metrics is None:
@@ -201,5 +202,62 @@ class Attention:
                        batch_size=self.batch_size)
 
     def predict(self, x_test):
+        predict = self.model.predict(x_test)
+        return predict
+
+
+class CNN:
+    def __init__(self, n_layers=2, filters=32, kernel_size=9, strides=3, activation="swish", optimizer="adam",
+                 loss="mse", metrics=None, l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
+        if metrics is None:
+            metrics = ["mae", "mape"]
+        self.layers = n_layers
+        self.filters = filters
+        self.kernel_size = kernel_size
+        self.strides = strides
+        self.activation = activation
+        self.optimizer = optimizer
+        self.loss = loss
+        self.metrics = metrics
+        self.l1 = l1
+        self.l2 = l2
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.model = model
+
+    def create_model(self):
+        model = keras.Sequential()
+        n_filters = self.filters
+        kernel_size = self.kernel_size
+        strides = self.strides
+
+        if self.layers > 1:
+            for i in range(self.layers-1):
+                model.add(
+                    layers.Conv1D(n_filters, kernel_size=kernel_size, strides=strides, activation=self.activation))
+                model.add(layers.BatchNormalization())
+                model.add(layers.MaxPooling1D(pool_size=2, strides=1))
+                n_filters *= 2
+                kernel_size = kernel_size - 2 if kernel_size > 2 else 1
+
+        model.add(
+            layers.Conv1D(n_filters, kernel_size=kernel_size, strides=strides, activation=self.activation))
+        model.add(layers.BatchNormalization())
+        model.add(layers.MaxPooling1D(pool_size=2, strides=1))
+
+        model.add(layers.Flatten())
+        model.add(layers.Dense(1, kernel_regularizer=regularizers.l1_l2(self.l1, self.l2)))
+        model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
+        return model
+
+    def fit(self, x_train, y_train, x_valid, y_valid):
+        x_train, x_valid = x_train.values.reshape(-1, x_train.shape[1], 1), \
+                           x_valid.values.reshape(-1, x_valid.shape[1], 1)
+        self.model = CNN.create_model(self)
+        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
+                       batch_size=self.batch_size)
+
+    def predict(self, x_test):
+        x_test = x_test.values.reshape(-1, x_test.shape[1], 1)
         predict = self.model.predict(x_test)
         return predict
