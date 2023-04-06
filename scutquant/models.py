@@ -11,8 +11,8 @@ from tensorflow import keras
 
     其它模型同理
     
-    目前实现的模型包括: DNN, LSTM, Bi-LSTM和Attention (scutquant模块还有OLS, ridge, lasso, XGBoost, hybrid和lightGBM)
-    计划实现的模型包括: CNN, RNN, GRU
+    目前实现的模型包括: DNN, CNN, LSTM, Bi-LSTM和Attention (scutquant模块还有OLS, ridge, lasso, XGBoost, hybrid和lightGBM)
+    计划实现的模型包括: RNN, GRU
 """
 
 
