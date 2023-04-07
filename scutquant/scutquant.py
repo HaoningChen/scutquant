@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import datetime
 import seaborn as sns
 import matplotlib.pyplot as plt
 import math
@@ -38,18 +39,18 @@ def join_data(data, data_join, time='datetime', col=None, index=None):
 
     asset_list = []
     for t in T:
-        data_choosed = data[data[time] == t]  # 找出每天资产池中资产的数量
-        asset_list.append(len(data_choosed))
+        data_chosen = data[data[time] == t]  # 找出每天资产池中资产的数量
+        asset_list.append(len(data_chosen))
 
     if col is not None:
         for c in col:
             idx = 0
             d_list = []
             for a in asset_list:
-                data_join_choosed = data_join[c][idx]
-                # print(data_join_choosed)
+                data_join_chosen = data_join[c][idx]
+                # print(data_join_chosen)
                 for asset in range(a):
-                    d_list.append(data_join_choosed)
+                    d_list.append(data_join_chosen)
                 idx += 1
             data[c] = d_list
     data.set_index(index, inplace=True)
@@ -89,7 +90,7 @@ def join_data_by_code(data, data_join, code='instrument', col=None, index=None):
 ####################################################
 # 特征工程
 ####################################################
-def price2ret(price, shift1=-1, shift2=-21, groupby=None, fillna=False):
+def price2ret(price, shift1=-1, shift2=-21, groupby=None, fill=False):
     """
     return_rate = price_shift2 / price_shift1 - 1
 
@@ -97,14 +98,14 @@ def price2ret(price, shift1=-1, shift2=-21, groupby=None, fillna=False):
     :param shift1: int
     :param shift2: int
     :param groupby: str
-    :param fillna: bool
+    :param fill: bool
     :return: pd.Series
     """
     if groupby is None:
         ret = price.shift(shift2) / price.shift(shift1) - 1
     else:
         ret = price.groupby([groupby]).shift(shift2) / price.groupby([groupby]).shift(shift1) - 1
-    if fillna:
+    if fill:
         ret.fillna(0, inplace=True)
     return ret
 
@@ -341,16 +342,19 @@ def bootstrap(X, col, val=0, windows=5, n=0.35):
 ####################################################
 # 拆分数据集
 ####################################################
-def split_by_date(X, train_date, valid_date):
+def split_by_date(X, train_start_date, train_end_date, valid_start_date, valid_end_date):
     """
     :param X: pd.DataFrame
-    :param train_date: str, 训练集的最后一天, 例如“2020-12-28”
-    :param valid_date: str, 验证集最后一天, 例如"2022-12-28"
+    :param train_start_date: str, 训练集的第一天, 例如“2020-12-28”
+    :param train_end_date: str, 训练集最后一天
+    :param valid_start_date: str, 验证集第一天, 例如"2022-12-28"
+    :param valid_end_date: str, 验证集最后一天
     :return: pd.DataFrame, pd.DataFrame
     """
-    X_train = X[X.index.get_level_values(0) <= train_date]
-    X_valid = X[X.index.get_level_values(0) <= valid_date]
-    X_valid = X_valid[~X_valid.index.isin(X_train.index)]
+    X_train = X[X.index.get_level_values(0) <= train_end_date]
+    X_train = X_train[X_train.index.get_level_values(0) >= train_start_date]
+    X_valid = X[X.index.get_level_values(0) <= valid_end_date]
+    X_valid = X_valid[X_valid.index.get_level_values(0) >= valid_start_date]
     return X_train, X_valid
 
 
@@ -399,16 +403,33 @@ def split_data_by_date(data, kwargs):
     """
     按照日期拆出(整段)的测试集, 然后剩下的数据按照参数"split_method"和"split_kwargs"拆除训练集和验证机
     :param data: pd.DataFrame
-    :param kwargs: dict, test_date"必填, 其它选填
+    :param kwargs: dict, test_start_date必填, 其它选填. 当没指定test_end_date时, 默认截取到最后一天
     :return: pd.DataFrame
     """
-    test_date = kwargs["test_date"]  # 测试集的第一天
     split_method = "split" if "split_method" not in kwargs.keys() else kwargs["split_method"]
     split_kwargs = None if "split_kwargs" not in kwargs.keys() else kwargs["split_kwargs"]
-    dtest = data[data.index.get_level_values(0) >= test_date]
+
+    test_start_date = kwargs["test_start_date"]  # 测试集的第一天
+    dtest = data[data.index.get_level_values(0) >= test_start_date]
+    # 默认测试集最后一天是数据集的最后一天
+    if "test_end_date" in kwargs.keys():
+        dtest = dtest[dtest.index.get_level_values(0) <= kwargs["test_end_date"]]
     dtrain = data[~data.index.isin(dtest.index)]
+
     if split_method == "split_by_date":
-        dtrain, dvalid = split_by_date(dtrain, split_kwargs["train_date"], split_kwargs["valid_date"])
+        # 默认训练集的第一天是数据集第一天，验证集的第一天是训练集最后一天的第二天
+        if "train_start_date" not in split_kwargs.keys():
+            train_start_date = dtrain.index.get_level_values(0)[0]
+        else:
+            train_start_date = split_kwargs["train_start_date"]
+        if "train_start_date" not in split_kwargs.keys():
+            valid_start_date = datetime.datetime.strptime(split_kwargs["train_end_date"], '%Y-%m-%d')
+            valid_start_date += datetime.timedelta(days=1)
+            valid_start_date = valid_start_date.strftime('%Y-%m-%d')
+        else:
+            valid_start_date = split_kwargs["valid_start_date"]
+        dtrain, dvalid = split_by_date(dtrain, train_start_date, split_kwargs["train_end_date"], valid_start_date,
+                                       split_kwargs["valid_end_date"])
     elif split_method == "split":
         dtrain, dvalid = split(dtrain, split_kwargs)
     else:
@@ -431,7 +452,7 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     :param split_params: dict, 划分数据集的方法
     :return: dict{X_train, X_test, y_train, y_test, ymean, ystd}
     """
-    datetime = X.index.names[0]
+    date = X.index.names[0]
     if split_params is None:
         split_params = {
             "data": X,
@@ -476,9 +497,9 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
             ymean, ystd = y_train.mean(), y_train.std()
             y_train, y_valid = zscorenorm(y_train, ymean, ystd), zscorenorm(y_valid, ymean, ystd)
         else:
-            ymean, ystd = y_test.groupby(datetime).mean(), y_test.groupby(datetime).std()  # 是否应该使用滞后项
-            y_train = zscorenorm(y_train, y_train.groupby(datetime).mean(), y_train.groupby(datetime).std())
-            y_valid = zscorenorm(y_valid, y_valid.groupby(datetime).mean(), y_valid.groupby(datetime).std())
+            ymean, ystd = y_test.groupby(date).mean(), y_test.groupby(date).std()  # 是否应该使用滞后项
+            y_train = zscorenorm(y_train, y_train.groupby(date).mean(), y_train.groupby(date).std())
+            y_valid = zscorenorm(y_valid, y_valid.groupby(date).mean(), y_valid.groupby(date).std())
         print('label norm done', '\n')
     else:
         ymean, ystd = None, None
@@ -511,24 +532,24 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
         X_test = clean(X_test)
     else:
         if norm == 'z':
-            mean, std = X_train.groupby(datetime).mean(), X_train.groupby(datetime).std()
+            mean, std = X_train.groupby(date).mean(), X_train.groupby(date).std()
             X_train = zscorenorm(X_train, mean, std)
-            X_valid = zscorenorm(X_valid, X_valid.groupby(datetime).mean(), X_valid.groupby(datetime).std())
-            X_test = zscorenorm(X_test, X_test.groupby(datetime).mean(), X_test.groupby(datetime).std())
+            X_valid = zscorenorm(X_valid, X_valid.groupby(date).mean(), X_valid.groupby(date).std())
+            X_test = zscorenorm(X_test, X_test.groupby(date).mean(), X_test.groupby(date).std())
         elif norm == 'r':
-            median = X_train.groupby(datetime).median()
+            median = X_train.groupby(date).median()
             X_train = robustzscorenorm(X_train, median)
-            X_valid = robustzscorenorm(X_valid, X_valid.groupby(datetime).median())
-            X_test = robustzscorenorm(X_test, X_test.groupby(datetime).median())
+            X_valid = robustzscorenorm(X_valid, X_valid.groupby(date).median())
+            X_test = robustzscorenorm(X_test, X_test.groupby(date).median())
         elif norm == 'm':
-            Min, Max = X_train.groupby(datetime).min(), X_train.groupby(datetime).max()
+            Min, Max = X_train.groupby(date).min(), X_train.groupby(date).max()
             X_train = minmaxnorm(X_train, Min, Max)
-            X_valid = minmaxnorm(X_valid, X_valid.groupby(datetime).min(), X_valid.groupby(datetime).max())
-            X_test = minmaxnorm(X_test, X_test.groupby(datetime).min(), X_test.groupby(datetime).max())
+            X_valid = minmaxnorm(X_valid, X_valid.groupby(date).min(), X_valid.groupby(date).max())
+            X_test = minmaxnorm(X_test, X_test.groupby(date).min(), X_test.groupby(date).max())
         else:
-            X_train = ranknorm(X_train, groupby=datetime)
-            X_valid = ranknorm(X_valid, groupby=datetime)
-            X_test = ranknorm(X_test, groupby=datetime)
+            X_train = ranknorm(X_train, groupby=date)
+            X_valid = ranknorm(X_valid, groupby=date)
+            X_test = ranknorm(X_test, groupby=date)
 
         X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
         X_valid = X_valid.groupby([groupby]).fillna(method='ffill').dropna()
