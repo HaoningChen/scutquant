@@ -7,7 +7,7 @@
 获取数据模块, 基于akshare实现. 目前功能只有获取指数成分股数据  
 ### [alpha](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py): 
 因子模块, 实现了两个因子库, 一个由alpha360()函数实现, 另一个由make_factors实现.  
-前者是基础价量数据的滞后项, 作除单位处理; 后者是技术因子, 目前包含158个较为有效的因子
+前者是基础价量数据的滞后项, 作除单位处理; 后者是技术因子, 目前包含175个较为有效的因子
 ### [scutquant](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/scutquant.py):  
 包含了scutquant包最核心的数据分析和数据处理功能, 还有一些快速建模函数(支持一键训练线性回归模型(基于sklearn), hybrid模型和lightGBM)   
 ### [models](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/models.py):  
