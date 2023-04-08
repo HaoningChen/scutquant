@@ -788,7 +788,7 @@ def pearson_corr(x, y):
     return cor
 
 
-def ic_ana(pred, y, groupby=None, plot=True):
+def ic_ana(pred, y, groupby=None, plot=True, freq=30):
     """
     :param pred: pd.DataFrame or pd.Series, 预测值
     :param y: pd.DataFrame or pd.Series, 真实值
@@ -801,12 +801,12 @@ def ic_ana(pred, y, groupby=None, plot=True):
     ic = concat_data.groupby(groupby).apply(lambda x: x.iloc[:, 0].corr(x.iloc[:, 1]))
     rank_ic = concat_data.groupby(groupby).apply(lambda x: x.iloc[:, 0].corr(x.iloc[:, 1], method='spearman'))
     if plot:
+        # 默认freq为30的情况下，画出来的IC是月均IC
         plt.figure(figsize=(10, 6))
-        plt.plot(ic.values, label='ic', marker='o')
-        plt.plot(rank_ic.values, label='rank_ic', marker='o')
-        plt.xlabel(groupby + '_id')
+        plt.plot(ic.rolling(freq).mean()[freq-1:: freq], label='ic', marker='o')
+        plt.plot(rank_ic.rolling(freq).mean()[freq-1:: freq], label='rank_ic', marker='o')
         plt.ylabel('score')
-        plt.title('IC Series')
+        plt.title('IC Series (freq=' + str(freq) + ')')
         plt.legend()
         plt.show()
         plt.clf()

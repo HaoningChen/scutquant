@@ -138,8 +138,8 @@ def make_factors(kwargs=None, windows=None):
         data["ret"] = data[close].groupby(groupby).shift(1) / data[close] - 1
         mean_ret = data["ret"].groupby(datetime).mean()
         # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
-        # X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
-        # X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
+        X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
+        X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
         for i in range(1, 5):
             X["RET1_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1)
             X["RET2_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1).groupby(datetime).rank(
@@ -153,7 +153,7 @@ def make_factors(kwargs=None, windows=None):
             # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
             X["MA" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).mean()) / data[close]
             # The standard diviation of close price for the past d days, divided by latest close price to remove unit
-            # X["STD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[close]
+            X["STD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[close]
             # The max price for past d days, divided by latest close price to remove unit
             X["MAX" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).max()) / data[close]
             # The low price for past d days, divided by latest close price to remove unit
@@ -174,7 +174,7 @@ def make_factors(kwargs=None, windows=None):
             X["CORR2_" + str(w)] = X["RET2_" + str(1)].groupby(groupby).transform(
                 lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
             # RSI指标
-            # X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
+            X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
         # del data["ret"]
         del mean_ret
 
@@ -226,25 +226,12 @@ def make_factors(kwargs=None, windows=None):
     if high is not None:
         for w in windows:
             X["HIGH" + str(w)] = data[high].groupby(groupby).shift(w) / data[high]
-            # Part of Aroon Indicator https://www.investopedia.com/terms/a/aroon.asp
-            # X["IMAX" + str(w)] = 100 * (w - data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())) / (
-            #        data[close] * w)
         if low is not None:
-            """
-            for w in windows:
-                IMAX = 100 * (w - data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())) / w
-                IMIN = 100 * (w - data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())) / w
-                # The time period between previous lowest-price date occur after highest price date.
-                X["IMXD" + str(w)] = (IMAX - IMIN) / data[close]
-            """
             if close is not None:
                 X["MEAN1"] = (data[high] + data[low]) / (2 * data[close])
     if low is not None:
         for w in windows:
             X["LOW" + str(w)] = data[low].groupby(groupby).shift(w) / data[low]
-            # Part of Aroon Indicator https://www.investopedia.com/terms/a/aroon.asp
-            # X["IMIN" + str(w)] = 100 * (w - data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())) / (
-            #        data[close] * w)
     if volume is not None:
         data["chg_vol"] = data[volume] / data[volume].groupby(groupby).shift(1) - 1
         for w in windows:
@@ -252,7 +239,7 @@ def make_factors(kwargs=None, windows=None):
             # https://www.barchart.com/education/technical-indicators/volume_moving_average
             X["VMA" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).mean()) / data[volume]
             # The standard deviation for volume in past d days.
-            # X["VSTD" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[volume]
+            X["VSTD" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[volume]
             X["VMA2_" + str(w)] = data["chg_vol"].groupby(groupby).transform(lambda x: x.rolling(w).mean())
             X["VSTD2_" + str(w)] = data["chg_vol"].groupby(groupby).transform(lambda x: x.rolling(w).std())
         X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
