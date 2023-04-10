@@ -794,6 +794,7 @@ def ic_ana(pred, y, groupby=None, plot=True, freq=30):
     :param y: pd.DataFrame or pd.Series, 真实值
     :param groupby: str, 排序依据
     :param plot: bool, 控制是否画出IC曲线
+    :param freq: int, 频率, 用于平滑IC序列
     :return: float, 依次为ic均值, icir, rank_ic均值和rank_icir
     """
     groupby = pred.index.names[0] if groupby is None else groupby
@@ -803,10 +804,10 @@ def ic_ana(pred, y, groupby=None, plot=True, freq=30):
     if plot:
         # 默认freq为30的情况下，画出来的IC是月均IC
         plt.figure(figsize=(10, 6))
-        plt.plot(ic.rolling(freq).mean()[freq-1:: freq], label='ic', marker='o')
-        plt.plot(rank_ic.rolling(freq).mean()[freq-1:: freq], label='rank_ic', marker='o')
+        plt.plot(ic.rolling(freq).mean(), label='ic', marker='o')
+        plt.plot(rank_ic.rolling(freq).mean(), label='rank_ic', marker='o')
         plt.ylabel('score')
-        plt.title('IC Series (freq=' + str(freq) + ')')
+        plt.title('IC Series (rolling ' + str(freq) + ')')
         plt.legend()
         plt.show()
         plt.clf()

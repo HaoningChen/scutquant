@@ -56,14 +56,27 @@ def cal_dea(dif, k=9):
     return dea
 
 
-def cal_rsi(prices, n=14):
-    deltas = prices.diff()
-    seed = deltas[:n + 1]
-    up = seed[seed >= 0].sum() / n
-    down = -seed[seed < 0].sum() / n
-    rs = up / (down + 1e-12)
+def cal_rsi(price, n=14):
+    delta = price.diff()
+    gain, loss = delta.copy(), delta.copy()
+    gain[gain < 0] = 0
+    loss[loss > 0] = 0
+    avg_gain = gain.rolling(window=n).mean()
+    avg_loss = loss.abs().rolling(window=n).mean()
+    rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
+
+
+def cal_psy(price,  n=14):
+    psy = []
+    for data in price:
+        if len(data) < n:
+            psy.append(50)
+        else:
+            up_days = sum([1 for j in range(len(data)) if data[j] > data[j - 1]])
+            psy.append(up_days / n * 100)
+    return psy
 
 
 def make_factors(kwargs=None, windows=None):
@@ -135,19 +148,20 @@ def make_factors(kwargs=None, windows=None):
     X = pd.DataFrame(index=data.index)
 
     if close is not None:
-        data["ret"] = data[close].groupby(groupby).shift(1) / data[close] - 1
+        data["ret"] = data[close] / data[close].groupby(groupby).shift(1) - 1
         mean_ret = data["ret"].groupby(datetime).mean()
         # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
         X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
         X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
+        # X["PSY"] = data[close].groupby(groupby).transform(lambda x: cal_psy(x.rolling(14)))
         for i in range(1, 5):
-            X["RET1_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1)
-            X["RET2_" + str(i)] = (data[close].groupby(groupby).shift(i) / data[close] - 1).groupby(datetime).rank(
+            X["RET1_" + str(i)] = (data[close] / data[close].groupby(groupby).shift(i) - 1)
+            X["RET2_" + str(i)] = (data[close] / data[close].groupby(groupby).shift(i) - 1).groupby(datetime).rank(
                 pct=True)
         for w in windows:
             X["CLOSE" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
             # https://www.investopedia.com/terms/r/rateofchange.asp
-            X["ROC" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w) - 1) / w
+            X["ROC" + str(w)] = (data[close] / data[close].groupby(groupby).shift(w) - 1) / w
             # The rate of close price change in the past d days, divided by latest close price to remove unit
             X["BETA" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w)) / (data[close] * w)
             # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
@@ -166,13 +180,10 @@ def make_factors(kwargs=None, windows=None):
                 close]
             X["MA2_" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).mean())
             X["STD2_" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).std())
-            # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数
-            # 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数(rolling=30, 60), 则有可能是个股发生了异动,
-            # 可根据异动的方向选择个股与大盘的多空组合
-            X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(
-                lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
-            X["CORR2_" + str(w)] = X["RET2_" + str(1)].groupby(groupby).transform(
-                lambda x: x.rolling(w).corr(mean_ret.rolling(w)))
+            # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数(rolling=30, 60),
+            # 则有可能是个股发生了异动, 可根据异动的方向选择个股与大盘的多空组合
+            X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret))
+            X["CORR2_" + str(w)] = X["RET2_" + str(1)].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret))
             # RSI指标
             X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
         # del data["ret"]
@@ -254,7 +265,7 @@ def make_factors(kwargs=None, windows=None):
             data["ret_" + str(w)] = data["ret"] - X["MA2_" + str(w)]
             data["volume_" + str(w)] = data["chg_vol"] - X["VMA2_" + str(w)]
             X["CORRCV" + str(w)] = (data["ret_" + str(w)] * data["volume_" + str(w)]).groupby(groupby).transform(
-                lambda x: x.rolling(5).mean()) / (X["STD2_" + str(w)] * X["VSTD2_" + str(w)])
+                lambda x: x.rolling(w).mean()) / (X["STD2_" + str(w)] * X["VSTD2_" + str(w)])
             del data["ret_" + str(w)]
             del data["volume_" + str(w)]
             del X["STD2_" + str(w)]
@@ -264,7 +275,7 @@ def make_factors(kwargs=None, windows=None):
             X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
     end = time.time()
     print("time used:", end - start)
-    return X
+    return X.fillna(X.mean())
 
 
 def alpha360(kwargs, shift=60):

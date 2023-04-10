@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from . import scutquant
+from sklearn.linear_model import LinearRegression
 
 
 def sharpe_ratio(ret, rf=0.03, freq=1):
@@ -137,7 +137,7 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
     ret = pd.Series(acc_ret)  # 累计收益率
     ben = pd.Series(ben_ret)  # benchmark的累计收益率
     x = ben.values.reshape(-1, 1)
-    model = scutquant.auto_lrg(x, ret, verbose=0)
+    model = LinearRegression().fit(x, ret)
 
     sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq)
     sortino = sortino_ratio(acc_ret, ben_ret)

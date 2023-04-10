@@ -6,16 +6,13 @@ import datetime
 def get_index_stock_cons(index_code='000300', freq="daily", start="20230330", end="20230331", adjust=""):
     """
     注：此函数还在不断完善中, 尤其是股票代码一块，非沪深300股票池的股票, 代码后缀可能会出错
-
     :param index_code: str, 指数代码
     :param freq: str, 有"daily", "weekly"和"monthly"可选
     :param start: str, 日期, %y%m%d格式
     :param end: str, 日期, %y%m%d格式
     :param adjust: ""为不复权, “qfq”为前复权, “hfq”为后复权
     :return: pd.DataFrame
-
     example:
-
     data = get_index_stock_cons()
     """
     cons = ak.index_stock_cons(symbol=index_code)
@@ -30,14 +27,11 @@ def get_index_stock_cons(index_code='000300', freq="daily", start="20230330", en
 def upgrade_index_stock_cons(index_code='000300', today=None, adjust=""):
     """
     此函数设计的目的是自动更新数据
-
     :param index_code: str, 指数代码
     :param today: str, 今天的日期, %y%m%d格式
     :param adjust: ""为不复权, “qfq”为前复权, “hfq”为后复权
     :return: pd.DataFrame
-
     example:
-
     data = upgrade_index_stock_cons(today="20230330")
     """
     if today is None:
@@ -45,4 +39,3 @@ def upgrade_index_stock_cons(index_code='000300', today=None, adjust=""):
         today = today.strftime("%Y%m%d")
     df = get_index_stock_cons(index_code=index_code, freq="daily", start=today, end=today, adjust=adjust)
     return df
-

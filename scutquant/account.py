@@ -34,6 +34,7 @@ class Account:
         self.risk = None
         self.risk_curve = []
         # todo: 增加换手率(turnover)
+        # 换手率等于基金在某一时期内的交易额除以该时期内基金的平均市值，再乘以100 %
 
     def check_order(self, order, price, cost_rate=0.0015, min_cost=5):  # 检查是否有足够的资金完成order, 如果不够则不买
         # todo: 增加风险度判断（执行该order会不会超出最大风险度）
