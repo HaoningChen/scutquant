@@ -68,7 +68,7 @@ def cal_rsi(price, n=14):
     return rsi
 
 
-def cal_psy(price,  n=14):
+def cal_psy(price, n=14):
     psy = []
     for data in price:
         if len(data) < n:
@@ -79,7 +79,137 @@ def cal_psy(price,  n=14):
     return psy
 
 
-def make_factors(kwargs=None, windows=None):
+# 各大类特征
+def MACD(X, data_group, groupby, name=None):
+    # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
+    if name is None:
+        name = ["DIF", "DEA"]
+    features = pd.DataFrame()
+    features[name[0]] = data_group.transform(lambda x: cal_dif(x))
+    features[name[1]] = features[name[0]].groupby(groupby).transform(lambda x: cal_dea(x))
+    return pd.concat([X, features], axis=1)
+
+
+def RET(X, data, data_group, groupby, name="RET"):
+    features = pd.DataFrame()
+    for i in range(1, 5):
+        features[name + "1_" + str(i)] = (data / data_group.shift(i) - 1)
+        features[name + "2_" + str(i)] = (data / data_group.shift(i) - 1).groupby(groupby).rank(pct=True)
+    return pd.concat([X, features], axis=1)
+
+
+def SHIFT(X, data, data_group, windows, name):
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.shift(w) / data
+    return pd.concat([X, features], axis=1)
+
+
+def ROC(X, data, data_group, windows, name="ROC"):
+    # https://www.investopedia.com/terms/r/rateofchange.asp
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = (data / data_group.shift(w) - 1) / w
+    return pd.concat([X, features], axis=1)
+
+
+def BETA(X, data, data_group, windows, name="BETA"):
+    # The rate of close price change in the past d days, divided by latest close price to remove unit
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = (data - data_group.shift(w)) / (data * w)
+    return pd.concat([X, features], axis=1)
+
+
+def MA(X, data, data_group, windows, name="MA"):
+    # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).mean()) / data
+    return pd.concat([X, features], axis=1)
+
+
+def STD(X, data, data_group, windows, name="STD"):
+    # The standard deviation of close price for the past d days, divided by latest close price to remove unit
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).std()) / data
+    return pd.concat([X, features], axis=1)
+
+
+def MAX(X, data, data_group, windows, name="MAX"):
+    # The max price for past d days, divided by latest close price to remove unit
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).max()) / data
+    return pd.concat([X, features], axis=1)
+
+
+def MIN(X, data, data_group, windows, name="MIN"):
+    # The low price for past d days, divided by latest close price to remove unit
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).min()) / data
+    return pd.concat([X, features], axis=1)
+
+
+def QTL(X, data, data_group, windows, name="QTL"):
+    # The x% quantile of past d day's close price, divided by latest close price to remove unit
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + "U" + str(w)] = data_group.transform(lambda x: x.rolling(w).quantile(0.8)) / data
+        features[name + "D" + str(w)] = data_group.transform(lambda x: x.rolling(w).quantile(0.2)) / data
+    return pd.concat([X, features], axis=1)
+
+
+def CORR(X, data1_group, data2, windows, name="CORR"):
+    # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数
+    # (rolling=30, 60), 则有可能是个股发生了异动, 可根据异动的方向选择个股与大盘的多空组合
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data1_group.transform(lambda x: x.rolling(w).corr(data2))
+    return pd.concat([X, features], axis=1)
+
+
+def RSI(X, data_group, windows, name="RSI"):
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: cal_rsi(x, w))
+    return pd.concat([X, features], axis=1)
+
+
+def PERF(X, data, group_idx, name="PERF"):
+    # performance: 股票当日收益率相对大盘的表现
+    features = pd.DataFrame()
+    features[name + "1"] = data / group_idx.mean()
+    features[name + "2"] = data / group_idx.std()
+    features[name + "3"] = data / group_idx.max()
+    features[name + "4"] = data / group_idx.min()
+    return pd.concat([X, features], axis=1)
+
+
+def IDX(X, data, idx, windows, name="IDX"):
+    # 收盘价相对开盘价的变化, 与大盘的移动平均线对比
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + "1_" + str(w)] = data / idx.rolling(w).mean()
+        features[name + "2_" + str(w)] = data / idx.rolling(w).max()
+        features[name + "3_" + str(w)] = data / idx.rolling(w).min()
+        features[name + "4_" + str(w)] = data / idx.rolling(w).median()
+    return pd.concat([X, features], axis=1)
+
+
+def RSV(X, data, low_group, high_group, windows, name="RSV"):
+    # Represent the price position between upper and lower resistent price for past d days.
+    features = pd.DataFrame()
+    for w in windows:
+        LOW = low_group.transform(lambda x: x.rolling(w).min())
+        HIGH = high_group.transform(lambda x: x.rolling(w).max())
+        features[name + str(w)] = (data - LOW) / (HIGH - LOW + 1e-12)
+    return pd.concat([X, features], axis=1)
+
+
+def make_factors(kwargs=None, windows=None, fillna=False):
     """
     面板数据适用，序列数据请移步 make_factors_series
 
@@ -112,6 +242,7 @@ def make_factors(kwargs=None, windows=None):
         low: str, 当前tick的最低价
     }
     :param windows: list, 移动窗口的列表
+    :param fillna: 是否填充缺失值
     :return: pd.DataFrame
     """
     start = time.time()
@@ -120,17 +251,17 @@ def make_factors(kwargs=None, windows=None):
     if "data" not in kwargs.keys():
         kwargs["data"] = pd.DataFrame()
     if "close" not in kwargs.keys():
-        kwargs["close"] = "close"
+        kwargs["close"] = None
     if "open" not in kwargs.keys():
-        kwargs["open"] = "open"
+        kwargs["open"] = None
     if "volume" not in kwargs.keys():
-        kwargs["volume"] = "volume"
+        kwargs["volume"] = None
     if "amount" not in kwargs.keys():
-        kwargs["amount"] = "amount"
+        kwargs["amount"] = None
     if "high" not in kwargs.keys():
-        kwargs["high"] = "high"
+        kwargs["high"] = None
     if "low" not in kwargs.keys():
-        kwargs["low"] = "low"
+        kwargs["low"] = None
 
     data = kwargs["data"]
     open = kwargs["open"]
@@ -147,138 +278,121 @@ def make_factors(kwargs=None, windows=None):
 
     X = pd.DataFrame(index=data.index)
 
+    # 先计算好分组再反复调用，节省重复计算花费的时间
+    group_c = data[close].groupby(groupby) if close is not None else None
+    group_o = data[open].groupby(groupby) if open is not None else None
+    group_h = data[high].groupby(groupby) if high is not None else None
+    group_l = data[low].groupby(groupby) if low is not None else None
+    group_v = data[volume].groupby(groupby) if volume is not None else None
+    group_a = data[amount].groupby(groupby) if amount is not None else None
+
     if close is not None:
-        data["ret"] = data[close] / data[close].groupby(groupby).shift(1) - 1
+        data["ret"] = data[close] / group_c.shift(1) - 1
+        # data["ret"].fillna(1e-12)
+        group_r = data["ret"].groupby(groupby)
         mean_ret = data["ret"].groupby(datetime).mean()
-        # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
-        X["DIF"] = data[close].groupby(groupby).transform(lambda x: cal_dif(x))
-        X["DEA"] = X["DIF"].groupby(groupby).transform(lambda x: cal_dea(x))
+
+        X = MACD(X, group_c, groupby=groupby)
+        X = RET(X, data[close], group_c, groupby=datetime)
+        X = SHIFT(X, data[close], group_c, windows=windows, name="CLOSE")
+        X = ROC(X, data[close], group_c, windows=windows)
+        X = BETA(X, data[close], group_c, windows=windows)
+        X = MA(X, data[close], group_c, windows=windows)
+        X = STD(X, data[close], group_c, windows=windows)
+        X = MAX(X, data[close], group_c, windows=windows)
+        X = MIN(X, data[close], group_c, windows=windows)
+        X = QTL(X, data[close], group_c, windows=windows)
+        # X = MA(X, data["ret"], group_r, windows=windows, name="MA2_")
+        # X = STD(X, data["ret"], group_r, windows=windows, name="STD2_")
+        X = CORR(X, group_r, mean_ret, windows=windows)
+
+        group_r_rank = X["RET2_1"].groupby(groupby)
+        X = CORR(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
+        X = RSI(X, group_c, windows=windows)
+
         # X["PSY"] = data[close].groupby(groupby).transform(lambda x: cal_psy(x.rolling(14)))
-        for i in range(1, 5):
-            X["RET1_" + str(i)] = (data[close] / data[close].groupby(groupby).shift(i) - 1)
-            X["RET2_" + str(i)] = (data[close] / data[close].groupby(groupby).shift(i) - 1).groupby(datetime).rank(
-                pct=True)
-        for w in windows:
-            X["CLOSE" + str(w)] = data[close].groupby(groupby).shift(w) / data[close]
-            # https://www.investopedia.com/terms/r/rateofchange.asp
-            X["ROC" + str(w)] = (data[close] / data[close].groupby(groupby).shift(w) - 1) / w
-            # The rate of close price change in the past d days, divided by latest close price to remove unit
-            X["BETA" + str(w)] = (data[close] - data[close].groupby(groupby).shift(w)) / (data[close] * w)
-            # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
-            X["MA" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).mean()) / data[close]
-            # The standard diviation of close price for the past d days, divided by latest close price to remove unit
-            X["STD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[close]
-            # The max price for past d days, divided by latest close price to remove unit
-            X["MAX" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).max()) / data[close]
-            # The low price for past d days, divided by latest close price to remove unit
-            X["MIN" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).min()) / data[close]
-            # The 80% quantile of past d day's close price, divided by latest close price to remove unit
-            X["QTLU" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).quantile(0.8)) / data[
-                close]
-            # The 20% quantile of past d day's close price, divided by latest close price to remove unit
-            X["QTLD" + str(w)] = data[close].groupby(groupby).transform(lambda x: x.rolling(w).quantile(0.2)) / data[
-                close]
-            X["MA2_" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).mean())
-            X["STD2_" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).std())
-            # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数(rolling=30, 60),
-            # 则有可能是个股发生了异动, 可根据异动的方向选择个股与大盘的多空组合
-            X["CORR" + str(w)] = data["ret"].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret))
-            X["CORR2_" + str(w)] = X["RET2_" + str(1)].groupby(groupby).transform(lambda x: x.rolling(w).corr(mean_ret))
-            # RSI指标
-            X["RSI" + str(w)] = data[close].groupby(groupby).transform(lambda x: cal_rsi(x, w))
-        # del data["ret"]
-        del mean_ret
+        del mean_ret, group_r, group_r_rank
 
         if open is not None:
-            X["DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
-            X["KMID"] = data[close] / data[open] - 1
-            # performance: 股票当日收益率相对大盘的表现
-            X["PERF1"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).mean()
-            X["PERF2"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).max()
-            X["PERF3"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).min()
-            X["PERF4"] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(datetime).median()
-            for w in windows:
-                # 股票收盘对开盘的收益, 与大盘移动平均线相比的强弱
-                X["IDX1_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
-                    datetime).mean().rolling(w).mean()
-                X["IDX2_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
-                    datetime).mean().rolling(w).max()
-                X["IDX3_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
-                    datetime).mean().rolling(w).min()
-                X["IDX4_" + str(w)] = (data[close] / data[open] - 1) / (data[close] / data[open] - 1).groupby(
-                    datetime).mean().rolling(w).median()
+            chg_rate = data[close] / data[open] - 1
+            group_idx = chg_rate.groupby(datetime)
+            idx = group_idx.mean()
+
+            X = PERF(X, chg_rate, group_idx)
+            X = IDX(X, chg_rate, idx, windows=windows)
+
+            features = pd.DataFrame()
+            features["DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
+            features["KMID"] = chg_rate
+
+            del chg_rate, group_idx, idx
+
             if high is not None:
-                X["KUP"] = (data[high] - data[open]) / data[open]
+                features["KUP"] = (data[high] - data[open]) / data[open]
                 if low is not None:
-                    l9 = data[low].groupby(groupby).transform(lambda x: x.rolling(9).min())
-                    h9 = data[high].groupby(groupby).transform(lambda x: x.rolling(9).max())
+                    l9 = group_l.transform(lambda x: x.rolling(9).min())
+                    h9 = group_h.transform(lambda x: x.rolling(9).max())
                     # KDJ指标
-                    X["KDJ_K"] = (data[close] - l9) / (h9 - l9) * 100
-                    X["KDJ_D"] = X["KDJ_K"].groupby(groupby).transform(lambda x: x.rolling(3).mean())
-                    # X["KDJ_J"] = 3 * X["KDJ_D"] - 2 * X["KDJ_K"]  # K和D的线性组合，没必要加上
-                    del l9
-                    del h9
-                    X["KLEN"] = (data[high] - data[low]) / data[open]
-                    X["KIMD2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
-                    X["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-12)
-                    X["KLOW"] = (data[close] - data[low]) / data[open]
-                    X["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-12)
-                    X["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
-                    X["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
-                    X["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
-                    for w in windows:
-                        LOW = data[low].groupby(groupby).transform(lambda x: x.rolling(w).min())
-                        HIGH = data[high].groupby(groupby).transform(lambda x: x.rolling(w).max())
-                        # Represent the price position between upper and lower resistent price for past d days.
-                        X["RSV" + str(w)] = (data[close] - LOW) / (HIGH - LOW + 1e-12)
+                    features["KDJ_K"] = (data[close] - l9) / (h9 - l9) * 100
+                    features["KDJ_D"] = features["KDJ_K"].groupby(groupby).transform(lambda x: x.rolling(3).mean())
+                    del l9, h9
+                    features["KLEN"] = (data[high] - data[low]) / data[open]
+                    features["KIMD2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
+                    features["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-12)
+                    features["KLOW"] = (data[close] - data[low]) / data[open]
+                    features["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-12)
+                    features["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
+                    features["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
+                    features["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
+                    X = pd.concat([X, features], axis=1)
+                    X = RSV(X, data[close], group_l, group_h, windows=windows)
+            del features
     if open is not None:
-        for w in windows:
-            X["OPEN" + str(w)] = data[open].groupby(groupby).shift(w) / data[open]
+        X = SHIFT(X, data[open], group_o, windows=windows, name="OPEN")
+
     if high is not None:
-        for w in windows:
-            X["HIGH" + str(w)] = data[high].groupby(groupby).shift(w) / data[high]
+        X = SHIFT(X, data[high], group_h, windows=windows, name="HIGH")
         if low is not None:
             if close is not None:
                 X["MEAN1"] = (data[high] + data[low]) / (2 * data[close])
+
     if low is not None:
-        for w in windows:
-            X["LOW" + str(w)] = data[low].groupby(groupby).shift(w) / data[low]
+        X = SHIFT(X, data[low], group_l, windows=windows, name="LOW")
+
     if volume is not None:
-        data["chg_vol"] = data[volume] / data[volume].groupby(groupby).shift(1) - 1
-        for w in windows:
-            X["VOLUME" + str(w)] = data[volume].groupby(groupby).shift(w) / data[volume]
-            # https://www.barchart.com/education/technical-indicators/volume_moving_average
-            X["VMA" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).mean()) / data[volume]
-            # The standard deviation for volume in past d days.
-            X["VSTD" + str(w)] = data[volume].groupby(groupby).transform(lambda x: x.rolling(w).std()) / data[volume]
-            X["VMA2_" + str(w)] = data["chg_vol"].groupby(groupby).transform(lambda x: x.rolling(w).mean())
-            X["VSTD2_" + str(w)] = data["chg_vol"].groupby(groupby).transform(lambda x: x.rolling(w).std())
+        # data["chg_vol"] = data[volume] / group_v.shift(1) - 1
+        # group_rv = data["chg_vol"].groupby(groupby)
+        X = SHIFT(X, data[volume], group_v, windows=windows, name="VOLUME")
+        X = MA(X, data[volume], group_v, windows=windows, name="VMA")
+        X = STD(X, data[volume], group_v, windows=windows, name="VSTD")
+        # X = MA(X, data["chg_vol"], group_rv, windows=windows, name="VMA2_")
+        # X = STD(X, data["chg_vol"], group_rv, windows=windows, name="VSTD2_")
         X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
         if amount is not None:
             mean = data[amount] / data[volume]
+            group_mean = mean.groupby(groupby)
             X["MEAN2"] = mean / mean.groupby(datetime).mean()
-            for w in windows:
-                X["MEAN2_" + str(w)] = mean.groupby(groupby).shift(w) / mean
-            del mean
-    if close is not None:
-        for w in windows:
-            data["ret_" + str(w)] = data["ret"] - X["MA2_" + str(w)]
-            data["volume_" + str(w)] = data["chg_vol"] - X["VMA2_" + str(w)]
-            X["CORRCV" + str(w)] = (data["ret_" + str(w)] * data["volume_" + str(w)]).groupby(groupby).transform(
-                lambda x: x.rolling(w).mean()) / (X["STD2_" + str(w)] * X["VSTD2_" + str(w)])
-            del data["ret_" + str(w)]
-            del data["volume_" + str(w)]
-            del X["STD2_" + str(w)]
-    del data["ret"]
+            X = SHIFT(X, mean, group_mean, windows=windows, name="MEAN2_")
+            del mean, group_mean
+        """
+        if close is not None:
+            group_r = data[close] / group_c.shift(1) - 1
+            # 收益率和chg_vol的相关系数
+            X = CORR(X, group_r, data["chg_vol"], windows=windows, name="CORRCV")
+            del group_r
+        """
+
     if amount is not None:
-        for w in windows:
-            X["AMOUNT" + str(w)] = data[amount].groupby(groupby).shift(w) / data[amount]
+        X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
+
+    if fillna:
+        X = X.groupby(groupby).fillna(method="ffill").fillna(X.mean())
     end = time.time()
     print("time used:", end - start)
-    return X.fillna(X.mean())
+    return X
 
 
-def alpha360(kwargs, shift=60):
+def alpha360(kwargs, shift=60, fillna=False):
     start = time.time()
     if kwargs is None:
         kwargs = {}
@@ -307,35 +421,36 @@ def alpha360(kwargs, shift=60):
     groupby = data.index.names[1]
 
     X = pd.DataFrame()
+
+    group_c = data[close].groupby(groupby) if close is not None else None
+    group_o = data[open].groupby(groupby) if open is not None else None
+    group_h = data[high].groupby(groupby) if high is not None else None
+    group_l = data[low].groupby(groupby) if low is not None else None
+    group_v = data[volume].groupby(groupby) if volume is not None else None
+    group_a = data[amount].groupby(groupby) if amount is not None else None
+
+    windows = [i for i in range(0, shift)]
+
     if open is not None:
-        group = data[open].groupby(groupby)
-        for i in range(1, shift + 1):
-            X[open + str(i)] = group.shift(i) / data[close]
+        X = SHIFT(X, data[open], group_o, windows=windows, name="OPEN")
 
     if close is not None:
-        group = data[close].groupby(groupby)
-        for i in range(1, shift + 1):
-            X[close + str(i)] = group.shift(i) / data[close]
+        X = SHIFT(X, data[close], group_c, windows=windows, name="CLOSE")
 
     if high is not None:
-        group = data[high].groupby(groupby)
-        for i in range(1, shift + 1):
-            X[high + str(i)] = group.shift(i) / data[close]
+        X = SHIFT(X, data[high], group_h, windows=windows, name="HIGH")
 
     if low is not None:
-        group = data[low].groupby(groupby)
-        for i in range(1, shift + 1):
-            X[low + str(i)] = group.shift(i) / data[close]
+        X = SHIFT(X, data[low], group_l, windows=windows, name="LOW")
 
     if volume is not None:
-        group = data[volume].groupby(groupby)
-        for i in range(1, shift + 1):
-            X[volume + str(i)] = group.shift(i) / data[volume]
+        X = SHIFT(X, data[volume], group_v, windows=windows, name="VOLUME")
 
     if amount is not None:
-        group = data[amount].groupby(groupby)
-        for i in range(1, shift + 1):
-            X[amount + str(i)] = group.shift(i) / (data[close] * data[volume])
+        X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
+
+    if fillna:
+        X = X.groupby(groupby).fillna(method="ffill").fillna(X.mean())
     end = time.time()
     print("time used:", end - start)
     return X
