@@ -1,4 +1,4 @@
-from keras import layers, regularizers
+from keras import layers, regularizers, models
 from tensorflow import keras
 
 """
@@ -264,29 +264,42 @@ class CNN:
 
 
 class Ensemble:
-    def __init__(self, models=None, weight=None):
+    # https://www.kaggle.com/competitions/ubiquant-market-prediction结果表明, 多个神经网络的ensemble要比单个的效果更好
+    def __init__(self, model=None, weight=None):
         """
-        :param models: None 或者已训练好的模型列表. 如果为None则在fit()函数中使用默认参数训练两个CNN模型
+        :param model: None 或者已训练好的模型列表. 如果为None则在fit()函数中使用默认参数训练一个CNN模型和一个Bi-LSTM模型
         :param weight: None 或者各模型的权重
         """
-        self.models = models
+        self.models = model
         self.weight = weight
 
-    def create_model(self):
+    def create_model(self, x_input):
         if self.models is None:
             self.models = []
-            for i in range(2):
-                self.models.append(CNN().create_model())
+            self.models.append(CNN())
+            self.models.append((Bi_LSTM()))
+            self.models[0].create_model()
+            self.models[1].create_model(x_input)
             w = 1 / len(self.models)
             self.weight = [w for _ in range(len(self.models))] if self.weight is None else self.weight
 
     def fit(self, X_train, y_train, X_valid, y_valid):
-        Ensemble.create_model(self)
+        Ensemble.create_model(self, X_train)
         for i in range(len(self.models)):
             self.models[i].fit(X_train, y_train, X_valid, y_valid)
 
     def predict(self, X_test):
-        predict = [0 for _ in range(len(X_test))]
+        predict = {}
         for i in range(len(self.models)):
-            predict += self.models[i].predict(X_test) * self.weight[i]
-        return predict
+            pred = self.models[i].predict(X_test)
+            predict[str(i)] = pred * self.weight[i]
+        return sum(predict[k] for k in predict.keys())
+
+    def save(self, target_dir=''):
+        for i in range(len(self.models)):
+            self.models[i].model.save_model(target_dir + "model" + str(i))
+
+    def load(self, n_models, target_dir=''):
+        for i in range(n_models):
+            model = models.load_model(target_dir + "model" + str(i))
+            self.models.append(model)
