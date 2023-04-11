@@ -56,26 +56,31 @@ def cal_dea(dif, k=9):
     return dea
 
 
-def cal_rsi(price, n=14):
-    delta = price.diff()
-    gain, loss = delta.copy(), delta.copy()
-    gain[gain < 0] = 0
-    loss[loss > 0] = 0
-    avg_gain = gain.rolling(window=n).mean()
-    avg_loss = loss.abs().rolling(window=n).mean()
+def cal_rsi(price: pd.Series, windows: int = 14) -> pd.Series:
+    # 计算每日涨跌情况
+    diff = price.diff()
+    up = diff.copy()
+    up[up < 0] = 0
+    down = diff.copy()
+    down[down > 0] = 0
+
+    # 计算RSI指标
+    avg_gain = up.rolling(windows).sum() / windows
+    avg_loss = down.abs().rolling(windows).sum() / windows
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
+
     return rsi
 
 
-def cal_psy(price, n=14):
-    psy = []
-    for data in price:
-        if len(data) < n:
-            psy.append(50)
-        else:
-            up_days = sum([1 for j in range(len(data)) if data[j] > data[j - 1]])
-            psy.append(up_days / n * 100)
+def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
+    # 计算每日涨跌情况
+    diff = price.diff()
+    diff[diff > 0] = 1
+    diff[diff <= 0] = 0
+
+    # 计算PSY指标
+    psy = diff.rolling(windows).sum() / windows * 100
     return psy
 
 
@@ -175,6 +180,13 @@ def RSI(X, data_group, windows, name="RSI"):
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = data_group.transform(lambda x: cal_rsi(x, w))
+    return pd.concat([X, features], axis=1)
+
+
+def PSY(X, data_group, windows, name="PSY"):
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: cal_psy(x, w))
     return pd.concat([X, features], axis=1)
 
 
@@ -308,7 +320,10 @@ def make_factors(kwargs=None, windows=None, fillna=False):
 
         group_r_rank = X["RET2_1"].groupby(groupby)
         X = CORR(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
+
+        # 来自行为金融学的指标
         X = RSI(X, group_c, windows=windows)
+        X = PSY(X, group_c, windows=windows)
 
         # X["PSY"] = data[close].groupby(groupby).transform(lambda x: cal_psy(x.rolling(14)))
         del mean_ret, group_r, group_r_rank
