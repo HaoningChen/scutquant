@@ -110,38 +110,38 @@ def price2ret(price, shift1=-1, shift2=-21, groupby=None, fill=False):
     return ret
 
 
-def zscorenorm(X, mean=None, std=None, clip=True):
+def zscorenorm(X, mean=None, std=None, clip=3):
     if mean is None:
         mean = X.mean()
     if std is None:
         std = X.std()
     X -= mean
     X /= std
-    if clip:
-        X.clip(-3, 3, inplace=True)
+    if clip is not None:
+        X.clip(-clip, clip, inplace=True)
     return X
 
 
-def robustzscorenorm(X, median=None, clip=True):
+def robustzscorenorm(X, median=None, clip=3):
     if median is None:
         median = X.median()
     X -= median
     mad = abs(median) * 1.4826
     X /= mad
-    if clip:
-        X.clip(-3, 3, inplace=True)
+    if clip is not None:
+        X.clip(-clip, clip, inplace=True)
     return X
 
 
-def minmaxnorm(X, Min=None, Max=None, clip=True):
+def minmaxnorm(X, Min=None, Max=None, clip=3):
     if Min is None:
         Min = X.min()
     if Max is None:
         Max = X.max()
     X -= Min
     X /= Max - Min
-    if clip:
-        X.clip(-3, 3, inplace=True)
+    if clip is not None:
+        X.clip(-clip, clip, inplace=True)
     return X
 
 
@@ -440,7 +440,7 @@ def split_data_by_date(data, kwargs):
 ####################################################
 # 自动处理器
 ####################################################
-def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, orth=True, split_params=None):
+def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, orth=True, clip=3, split_params=None):
     """
     :param X: pd.DataFrame，原始特征，包括了目标值
     :param y: str，目标值所在列的列名
@@ -449,6 +449,7 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     :param label_norm: bool, 是否对目标值进行标准化
     :param select: bool, 是否去除无用特征
     :param orth: 是否正交化
+    :param clip: 是否截断特征, None为不截断, 否则按照(-clip, clip)截断
     :param split_params: dict, 划分数据集的方法
     :return: dict{X_train, X_test, y_train, y_test, ymean, ystd}
     """
@@ -515,15 +516,15 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
         if norm == 'z':
             mean, std = X_train.mean(), X_train.std()
             X_train = zscorenorm(X_train)
-            X_valid, X_test = zscorenorm(X_valid, mean, std), zscorenorm(X_test, mean, std)
+            X_valid, X_test = zscorenorm(X_valid, mean, std, clip), zscorenorm(X_test, mean, std, clip)
         elif norm == 'r':
             median = X_train.median()
             X_train = robustzscorenorm(X_train)
-            X_valid, X_test = robustzscorenorm(X_valid, median), robustzscorenorm(X_test, median)
+            X_valid, X_test = robustzscorenorm(X_valid, median, clip), robustzscorenorm(X_test, median, clip)
         elif norm == 'm':
             Min, Max = X_train.min(), X_train.max()
             X_train = minmaxnorm(X_train)
-            X_valid, X_test = minmaxnorm(X_valid, Min, Max), minmaxnorm(X_test, Min, Max)
+            X_valid, X_test = minmaxnorm(X_valid, Min, Max, clip), minmaxnorm(X_test, Min, Max, clip)
         else:
             X_train = ranknorm(X_train)
             X_valid, X_test = ranknorm(X_valid), ranknorm(X_test)
@@ -533,19 +534,19 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     else:
         if norm == 'z':
             mean, std = X_train.groupby(date).mean(), X_train.groupby(date).std()
-            X_train = zscorenorm(X_train, mean, std)
-            X_valid = zscorenorm(X_valid, X_valid.groupby(date).mean(), X_valid.groupby(date).std())
-            X_test = zscorenorm(X_test, X_test.groupby(date).mean(), X_test.groupby(date).std())
+            X_train = zscorenorm(X_train, mean, std, clip)
+            X_valid = zscorenorm(X_valid, X_valid.groupby(date).mean(), X_valid.groupby(date).std(), clip)
+            X_test = zscorenorm(X_test, X_test.groupby(date).mean(), X_test.groupby(date).std(), clip)
         elif norm == 'r':
             median = X_train.groupby(date).median()
-            X_train = robustzscorenorm(X_train, median)
-            X_valid = robustzscorenorm(X_valid, X_valid.groupby(date).median())
-            X_test = robustzscorenorm(X_test, X_test.groupby(date).median())
+            X_train = robustzscorenorm(X_train, median, clip)
+            X_valid = robustzscorenorm(X_valid, X_valid.groupby(date).median(), clip)
+            X_test = robustzscorenorm(X_test, X_test.groupby(date).median(), clip)
         elif norm == 'm':
             Min, Max = X_train.groupby(date).min(), X_train.groupby(date).max()
-            X_train = minmaxnorm(X_train, Min, Max)
-            X_valid = minmaxnorm(X_valid, X_valid.groupby(date).min(), X_valid.groupby(date).max())
-            X_test = minmaxnorm(X_test, X_test.groupby(date).min(), X_test.groupby(date).max())
+            X_train = minmaxnorm(X_train, Min, Max, clip)
+            X_valid = minmaxnorm(X_valid, X_valid.groupby(date).min(), X_valid.groupby(date).max(), clip)
+            X_test = minmaxnorm(X_test, X_test.groupby(date).min(), X_test.groupby(date).max(), clip)
         else:
             X_train = ranknorm(X_train, groupby=date)
             X_valid = ranknorm(X_valid, groupby=date)

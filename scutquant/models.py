@@ -1,4 +1,4 @@
-from tensorflow.keras import layers, regularizers
+from keras import layers, regularizers
 from tensorflow import keras
 
 """
@@ -232,7 +232,7 @@ class CNN:
         strides = self.strides
 
         if self.layers > 1:
-            for i in range(self.layers-1):
+            for i in range(self.layers - 1):
                 model.add(
                     layers.Conv1D(n_filters, kernel_size=kernel_size, strides=strides, activation=self.activation))
                 model.add(layers.BatchNormalization())
@@ -260,4 +260,33 @@ class CNN:
     def predict(self, x_test):
         x_test = x_test.values.reshape(-1, x_test.shape[1], 1)
         predict = self.model.predict(x_test)
+        return predict
+
+
+class Ensemble:
+    def __init__(self, models=None, weight=None):
+        """
+        :param models: None 或者已训练好的模型列表. 如果为None则在fit()函数中使用默认参数训练两个CNN模型
+        :param weight: None 或者各模型的权重
+        """
+        self.models = models
+        self.weight = weight
+
+    def create_model(self):
+        if self.models is None:
+            self.models = []
+            for i in range(2):
+                self.models.append(CNN().create_model())
+            w = 1 / len(self.models)
+            self.weight = [w for _ in range(len(self.models))] if self.weight is None else self.weight
+
+    def fit(self, X_train, y_train, X_valid, y_valid):
+        Ensemble.create_model(self)
+        for i in range(len(self.models)):
+            self.models[i].fit(X_train, y_train, X_valid, y_valid)
+
+    def predict(self, X_test):
+        predict = [0 for _ in range(len(X_test))]
+        for i in range(len(self.models)):
+            predict += self.models[i].predict(X_test) * self.weight[i]
         return predict
