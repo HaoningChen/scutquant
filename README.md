@@ -3,7 +3,8 @@
 
 代码和介绍见[scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant)
 
-纯代码版本(方便下载)请转到[scutquant_pure](https://github.com/chn489/scutquant_pure)
+纯代码版本(方便下载)请转到[scutquant_pure](https://github.com/chn489/scutquant_pure)或[scutquant-dev](https://github.com/chn489/scutquant-dev/tree/master)(开发版, 可能不稳定)
+
 
 如果有任何意见和建议，欢迎在issue区留言或者直接提pr! 如果觉得本仓库对您有用, 请点一个免费的star!  
 
