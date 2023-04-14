@@ -153,7 +153,7 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
     x = ben.values.reshape(-1, 1)
     model = LinearRegression().fit(x, ret)
 
-    sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq / 365)
+    sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq * 365)
     sortino = sortino_ratio(acc_ret, ben_ret)
     inf_ratio = information_ratio(acc_ret, ben_ret)
 
