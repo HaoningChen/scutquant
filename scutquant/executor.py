@@ -1,12 +1,13 @@
 from . import account, signal_generator, strategy  # 别动这行！
 
 
-def prepare(predict, data, price, volume):
+def prepare(predict, data, price, volume, real_ret):
     """
     :param predict: pd.DataFrame, 预测值, 应包括"predict"
     :param data: pd.DataFrame, 提供时间和价格信息
     :param price: str, data中表示价格的列名
     :param volume: str, data中表示成交量的列名
+    :param real_ret: pd.Series, 真实收益率
     :return: pd.DataFrame
     """
     data_ = data.copy()
@@ -19,6 +20,7 @@ def prepare(predict, data, price, volume):
     predict['volume'] = data1[volume]  # 当天的交易量, 假设交易量不会发生大的跳跃
     predict.index.names = ['time', 'code']
     predict["price"] = predict["price"].groupby(["code"]).shift(-1)  # 指令是T时生成的, 但是T+1执行, 所以是shift(-1)
+    predict["R"] = real_ret[real_ret.index.isin(predict.index)]  # 本来就是T+2对T+1的收益率, 因此不用前移
     return predict.dropna()
 
 
@@ -79,12 +81,14 @@ class Executor:
             position_zip, available_zip = zip(code, zero_list), zip(code, zero_list)
             self.position = dict(position_zip)
             self.available = dict(available_zip)
-        if self.ben_position is None:
+        """
+        if self.ben_position is None:  # 如果股票池固定, 那这段代码才是有意义的
             cash_invest = self.init_cash / len(code)  # 将可用资金均匀地投资每项资产(虽然这样做是不对的，应该分配不同权重), 得到指数
             self.ben_position = dict()  # 不用初始化available，因为不交易
             for code in self.price.keys():
                 self.ben_position[code] = int(cash_invest / (self.price[code] * 100) + 0.5) * 100  # 四舍五入取整, 以百为单位
                 self.ben_cash -= self.ben_position[code] * self.price[code]
+        """
 
     def create_account(self):
         self.user_account = account.Account(self.init_cash, self.position, self.available, self.price)
@@ -100,7 +104,7 @@ class Executor:
     def execute(self, data, verbose=0):
         # todo: 增加simulate模式
         """
-        :param data: pd.DataFrame, 包括三列：'predict', 't', 'price' 以及多重索引[('time', 'code')]
+        :param data: pd.DataFrame, 包括三列：'predict', 'volume', 'price', 'label' 以及多重索引[('time', 'code')]
         :param verbose: bool, 是否输出交易记录
         :return: self
         """
@@ -120,6 +124,7 @@ class Executor:
         if self.mode == 'generate':
             time = data.index.get_level_values(0).unique().values
             for t in time:
+                idx = data["R"].groupby(data.index.names[0]).mean()  # 大盘收益率
                 self.time.append(t)
                 data_select = data[data.index.get_level_values(0) == t]
                 signal = signal_generator.generate(data=data_select, strategy=self.s,
@@ -138,6 +143,7 @@ class Executor:
                                              cost_sell=self.cost_sell, min_cost=self.min_cost, trade=trade)
                 self.user_account.risk_control(risk_degree=self.s.risk_degree, cost_rate=self.cost_sell,
                                                min_cost=self.min_cost)
-                self.benchmark.update_all(order=None, price=current_price)
+                self.benchmark.value *= (1 + idx[idx.index == t][0])  # 乘上1+大盘收益率, 相当于等权指数
+                self.benchmark.val_hist.append(self.benchmark.value)
         else:
             raise ValueError('simulate mode is not available by far')

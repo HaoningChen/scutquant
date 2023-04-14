@@ -90,7 +90,7 @@ def join_data_by_code(data, data_join, code='instrument', col=None, index=None):
 ####################################################
 # 特征工程
 ####################################################
-def price2ret(price, shift1=-1, shift2=-21, groupby=None, fill=False):
+def price2ret(price, shift1=-1, shift2=-2, groupby=None, fill=False):
     """
     return_rate = price_shift2 / price_shift1 - 1
 
@@ -102,9 +102,11 @@ def price2ret(price, shift1=-1, shift2=-21, groupby=None, fill=False):
     :return: pd.Series
     """
     if groupby is None:
-        ret = price.shift(shift2) / price.shift(shift1) - 1
+        ret = price.shift(shift2) / price.shift(shift1).fillna(price.mean) - 1
     else:
-        ret = price.groupby([groupby]).shift(shift2) / price.groupby([groupby]).shift(shift1) - 1
+        shift_1 = price.groupby([groupby]).shift(shift1)
+        shift_2 = price.groupby([groupby]).shift(shift2)
+        ret = shift_2 / shift_1 - 1
     if fill:
         ret.fillna(0, inplace=True)
     return ret

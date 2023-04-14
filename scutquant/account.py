@@ -33,8 +33,9 @@ class Account:
         self.sell_hist = []  # 卖出记录
         self.risk = None
         self.risk_curve = []
-        # todo: 增加换手率(turnover)
         # 换手率等于基金在某一时期内的交易额除以该时期内基金的平均市值，再乘以100 %
+        self.turnover = []
+        self.trade_value = 0.0
 
     def check_order(self, order, price, cost_rate=0.0015, min_cost=5):  # 检查是否有足够的资金完成order, 如果不够则不买
         # todo: 增加风险度判断（执行该order会不会超出最大风险度）
@@ -83,6 +84,7 @@ class Account:
                 self.position[code] = order_buy[code]
                 self.available[code] = order_buy[code]
             buy_value += self.price[code] * order_buy[code]
+            self.trade_value += buy_value
         cost = max(min_cost, buy_value * cost_rate)
         self.cost += cost
         self.cash -= (buy_value + cost)  # 更新现金
@@ -98,6 +100,7 @@ class Account:
                 self.position[code] = -order_sell[code]
                 self.available[code] = -order_sell[code]
             sell_value += self.price[code] * order_sell[code]
+            self.trade_value += sell_value
         cost = max(min_cost, sell_value * cost_rate) if sell_value != 0 else 0
         self.cash += (sell_value - cost)  # 更新现金
 
@@ -105,11 +108,15 @@ class Account:
         # 更新市场价格、交易记录、持仓和可交易数量、交易费用和现金，市值
         # order的Key不一定要包括所有资产，但必须是position的子集
         Account.update_price(self, price)  # 首先更新市场价格
+        self.trade_value = 0.0
+        value_before_trade = self.value
         if order is not None:
             if trade:
                 Account.update_trade_hist(self, order)  # 然后更新交易记录
                 Account.sell(self, order['sell'], cost_buy, min_cost)
                 Account.buy(self, order['buy'], cost_sell, min_cost)
+        self.trade_value = abs(self.trade_value)
+        self.turnover.append(self.trade_value * 2 / (self.value + value_before_trade))
         Account.update_value(self)
 
     def auto_offset(self, freq, cost_buy=0.0015, cost_sell=0.0005, min_cost=5):  # 自动平仓

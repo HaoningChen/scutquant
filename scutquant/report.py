@@ -4,13 +4,13 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 
 
-def sharpe_ratio(ret, rf=0.03, freq=1):
+def sharpe_ratio(ret, rf=0.03, freq=1.0):
     """
     夏普比率（事后夏普比率，使用实际收益计算）
 
     :param ret: pd.Series or pd.DataFrame, 收益率曲线
     :param rf: float, 无风险利率
-    :param freq: int, 时间频率, 以年为单位则为1, 天为单位则为365, 其它类推
+    :param freq: float, 时间频率, 以年为单位则为1, 天为单位则为365, 其它类推
     :return: float, 对应时间频率的夏普比率
     """
     ret_copy = pd.Series(ret)
@@ -108,8 +108,22 @@ def accuracy(pred, y, sign=">="):
     return len(data_true) / len(data)
 
 
-def report_all(user_account, benchmark, show_raw_value=False, excess_return=True, risk=True, rf=0.03, freq=1, time=None,
-               figsize=(10, 6)):
+def report_all(user_account, benchmark, show_raw_value=False, excess_return=True, risk=True, turnover=True,
+               rf=0.03, freq=1, time=None, figsize=(10, 6)):
+    """
+
+    :param user_account: account类
+    :param benchmark: account类
+    :param show_raw_value: 显示原始市值（具体金额）
+    :param excess_return: 显示超额收益曲线
+    :param risk: 显示风险度
+    :param turnover: 显示换手率
+    :param rf: 显示无风险利率
+    :param freq: 频率, 日频为1，月频为30，其它类推
+    :param time: 显示时间轴
+    :param figsize: 图片大小
+    :return:
+    """
     if time is not None:
         time = pd.to_datetime(time, format='%Y-%m-%d')
 
@@ -139,15 +153,15 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
     x = ben.values.reshape(-1, 1)
     model = LinearRegression().fit(x, ret)
 
-    sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq)
+    sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq / 365)
     sortino = sortino_ratio(acc_ret, ben_ret)
     inf_ratio = information_ratio(acc_ret, ben_ret)
 
-    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / len(ret)) - 1)
+    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / len(ret) / freq) - 1)
     # print("years:", 252 / len(ret))
-    print('Annualized Volatility:', ret.std() * (len(ret) / 252) ** 0.5)
-    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / len(ret)) - 1)
-    print('Annualized Volatility(Benchmark):', ben.std() * (len(ret) / 252) ** 0.5, '\n')
+    print('Annualized Volatility:', ret.std() * ((252 / len(ret) / freq) ** 0.5))  # ret.std()*(x **0.5), x为一年有多少tick
+    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / len(ret) / freq) - 1)
+    print('Annualized Volatility(Benchmark):', ben.std() * ((252 / len(ret) / freq) ** 0.5), '\n')
     print('Cumulative Rate of Return:', acc_ret[-1])
     print('Cumulative Rate of Return(Benchmark):', ben_ret[-1])
     print('Cumulative Excess Rate of Return:', excess_ret[-1], '\n')
@@ -180,6 +194,10 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
     if risk:
         risk = pd.DataFrame({'risk': user_account.risk_curve}, index=time)
         plot([risk], label=['risk_degree'], title='Risk Degree', ylabel='value', figsize=figsize)
+
+    if turnover:
+        risk = pd.DataFrame({'turnover': user_account.turnover}, index=time)
+        plot([risk], label=['turnover'], title='Turnover', figsize=figsize)
 
 
 def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):

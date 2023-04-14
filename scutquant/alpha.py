@@ -79,7 +79,7 @@ def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
     diff[diff > 0] = 1
     diff[diff <= 0] = 0
 
-    # 计算PSY指标
+    # 计算PSY指标(其实是个分类指标, 在windows=w时, 最多有w+1个unique value(例如在windows=5时, 有0, 20, 40, 60, 80, 100))
     psy = diff.rolling(windows).sum() / windows * 100
     return psy
 
@@ -221,6 +221,18 @@ def RSV(X, data, low_group, high_group, windows, name="RSV"):
     return pd.concat([X, features], axis=1)
 
 
+def DELTA(X, ret_group, idx_return, windows, name="DELTA"):
+    # The delta of greek value
+    features = pd.DataFrame()
+    for w in windows:
+        cov = ret_group.transform(lambda x: x.rolling(w).cov(idx_return))
+        var = ret_group.transform(lambda x: x.rolling(w).var())
+        features[name + str(w)] = cov / var
+    return pd.concat([X, features], axis=1)
+
+# todo: 增加其它希腊值: gamma, vega, rho, ...
+
+
 def make_factors(kwargs=None, windows=None, fillna=False):
     """
     面板数据适用，序列数据请移步 make_factors_series
@@ -290,7 +302,7 @@ def make_factors(kwargs=None, windows=None, fillna=False):
 
     X = pd.DataFrame(index=data.index)
 
-    # 先计算好分组再反复调用，节省重复计算花费的时间
+    # 先计算好分组再反复调用，节省重复计算花费的时间(实验表明可以节省约80%的时间)
     group_c = data[close].groupby(groupby) if close is not None else None
     group_o = data[open].groupby(groupby) if open is not None else None
     group_h = data[high].groupby(groupby) if high is not None else None
@@ -325,6 +337,9 @@ def make_factors(kwargs=None, windows=None, fillna=False):
         X = RSI(X, group_c, windows=windows)
         X = PSY(X, group_c, windows=windows)
 
+        # 来自金融工程的指标
+        # X = DELTA(X, group_r, mean_ret, windows=windows)
+
         # X["PSY"] = data[close].groupby(groupby).transform(lambda x: cal_psy(x.rolling(14)))
         del mean_ret, group_r, group_r_rank
 
@@ -337,7 +352,8 @@ def make_factors(kwargs=None, windows=None, fillna=False):
             X = IDX(X, chg_rate, idx, windows=windows)
 
             features = pd.DataFrame()
-            features["DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
+            # 收盘价对开盘价的变化, 对于大盘的表现
+            features["R_DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
             features["KMID"] = chg_rate
 
             del chg_rate, group_idx, idx
