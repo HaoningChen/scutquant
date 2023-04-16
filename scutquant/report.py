@@ -157,10 +157,10 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
     sortino = sortino_ratio(acc_ret, ben_ret)
     inf_ratio = information_ratio(acc_ret, ben_ret)
 
-    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / len(ret) / freq) - 1)
+    print('Annualized Return:', (1 + acc_ret[-1]) ** (len(ret) / freq / 252) - 1)  # number of days / 252
     # print("years:", 252 / len(ret))
     print('Annualized Volatility:', ret.std() * ((252 / len(ret) / freq) ** 0.5))  # ret.std()*(x **0.5), x为一年有多少tick
-    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / len(ret) / freq) - 1)
+    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (len(ret) / freq / 252) - 1)
     print('Annualized Volatility(Benchmark):', ben.std() * ((252 / len(ret) / freq) ** 0.5), '\n')
     print('Cumulative Rate of Return:', acc_ret[-1])
     print('Cumulative Rate of Return(Benchmark):', ben_ret[-1])
