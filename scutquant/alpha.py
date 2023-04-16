@@ -42,6 +42,7 @@
 """
 import pandas as pd
 import time
+from scipy.stats import norm
 
 
 def cal_dif(prices, n=12, m=26):
@@ -82,6 +83,18 @@ def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
     # 计算PSY指标(其实是个分类指标, 在windows=w时, 最多有w+1个unique value(例如在windows=5时, 有0, 20, 40, 60, 80, 100))
     psy = diff.rolling(windows).sum() / windows * 100
     return psy
+
+
+def VaR(x: pd.Series, prob=0.05) -> float:
+    """
+
+    :param x: pd.Series
+    :param prob: float
+    :return: float
+    """
+    mean, std = x.mean(), x.std()
+    var = norm.ppf(1 - prob)
+    return (var * std) - mean
 
 
 # 各大类特征
@@ -230,7 +243,17 @@ def DELTA(X, ret_group, idx_return, windows, name="DELTA"):
         features[name + str(w)] = cov / var
     return pd.concat([X, features], axis=1)
 
+
 # todo: 增加其它希腊值: gamma, vega, rho, ...
+
+
+# 来自金融风险管理的因子
+def VAR(X, ret_group, windows, name="VAR"):
+    # the VaR of return at prob 5%
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = ret_group.transform(lambda x: VaR(x.rolling(w)))
+    return pd.concat([X, features], axis=1)
 
 
 def make_factors(kwargs=None, windows=None, fillna=False):
@@ -339,8 +362,7 @@ def make_factors(kwargs=None, windows=None, fillna=False):
 
         # 来自金融工程的指标
         # X = DELTA(X, group_r, mean_ret, windows=windows)
-
-        # X["PSY"] = data[close].groupby(groupby).transform(lambda x: cal_psy(x.rolling(14)))
+        X = VAR(X, group_r, windows=windows)
         del mean_ret, group_r, group_r_rank
 
         if open is not None:

@@ -104,9 +104,9 @@ def price2ret(price, shift1=-1, shift2=-2, groupby=None, fill=False):
     if groupby is None:
         ret = price.shift(shift2) / price.shift(shift1).fillna(price.mean) - 1
     else:
-        shift_1 = price.groupby([groupby]).shift(shift1)
-        shift_2 = price.groupby([groupby]).shift(shift2)
-        ret = shift_2 / shift_1 - 1
+        shift_1 = price.groupby([groupby]).shift(shift1).fillna(price.groupby(groupby).mean())
+        shift_2 = price.groupby([groupby]).shift(shift2).fillna(price.groupby(groupby).mean())
+        ret = (shift_2 / shift_1 + 1e-12) - 1
     if fill:
         ret.fillna(0, inplace=True)
     return ret

@@ -265,19 +265,21 @@ class CNN:
 
 class Ensemble:
     # https://www.kaggle.com/competitions/ubiquant-market-prediction结果表明, 多个神经网络的ensemble要比单个的效果更好
-    def __init__(self, model=None, weight=None):
+    def __init__(self, model=None, weight=None, epochs=10):
         """
         :param model: None 或者已训练好的模型列表. 如果为None则在fit()函数中使用默认参数训练一个CNN模型和一个Bi-LSTM模型
         :param weight: None 或者各模型的权重
+        :param epochs: 10, 需要自行训练模型时的epochs
         """
         self.models = model
         self.weight = weight
+        self.epochs = epochs
 
     def create_model(self, x_input):
         if self.models is None:
             self.models = []
-            self.models.append(CNN())
-            self.models.append((Bi_LSTM()))
+            self.models.append(CNN(epochs=self.epochs))
+            self.models.append((Bi_LSTM(epochs=self.epochs)))
             self.models[0].create_model()
             self.models[1].create_model(x_input)
             w = 1 / len(self.models)

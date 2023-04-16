@@ -33,6 +33,7 @@ class Account:
         self.sell_hist = []  # 卖出记录
         self.risk = None
         self.risk_curve = []
+        # todo: 增加换手率(turnover)
         # 换手率等于基金在某一时期内的交易额除以该时期内基金的平均市值，再乘以100 %
         self.turnover = []
         self.trade_value = 0.0

@@ -53,7 +53,6 @@ def get_daily_data(index_code, adjust=""):
     """
     获取指数成分股的历史数据(动态股票池, 日频), 支持各种复权
     一次性获取所有日期的数据
-    目标网站数据有问题, 暂时不建议使用该函数
 
     :param index_code: 指数代码, like "sh000300"
     :param adjust: ""为不复权, “qfq”为前复权, “hfq”为后复权
@@ -78,22 +77,3 @@ def get_daily_data(index_code, adjust=""):
     data.index.names = ["datetime", "code"]
     data.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pct_chg", "turnover"]
     return data
-
-
-def get_high_freq_data(index_code='000300', minutes=1, adjust=""):
-    """
-    获取指数成分股的高频数据
-    :param index_code: 指数代码
-    :param minutes: 最小分钟, 可为int或str
-    :param adjust: ""为不复权, “qfq”为前复权, “hfq”为后复权
-    :return: pd.DataFrame
-    """
-    cons = ak.index_stock_cons(symbol=index_code)
-    df = pd.DataFrame()
-    for code in cons["品种代码"]:
-        c = "sh" + code if code[0] == "6" else "sz" + code
-        data = ak.stock_zh_a_minute(symbol=c, period=str(minutes), adjust=adjust)
-        # print(data)
-        data["code"] = c
-        df = pd.concat([df, data], axis=0)
-    return df
