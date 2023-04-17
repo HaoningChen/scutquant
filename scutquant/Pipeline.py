@@ -23,7 +23,10 @@ def load_data(target_dir="", kwargs=None, auto_generate=False):
             "label": {
                 "by": "close",
                 "shift1": -1,
-                "shift2": -2
+                "shift2": -2,
+                "shift": -2,
+                "add": 0,
+                "divide": 1
             }
         }
     data_file = target_dir + "/data." + kwargs["format"]
@@ -48,8 +51,23 @@ def load_data(target_dir="", kwargs=None, auto_generate=False):
     data = data[~data.index.duplicated()]
     if kwargs["process_nan"]:
         data = data.groupby(data.index.names[1]).fillna(method="ffill").dropna()
-    data["label"] = q.price2ret(data[kwargs["label"]["by"]], shift1=kwargs["label"]["shift1"],
-                                shift2=kwargs["label"]["shift2"], groupby=data.index.names[1])
+
+    if "label" not in data.columns:
+        if "add" not in kwargs["label"].keys():
+            kwargs["label"]["add"] = 0
+        if "divide" not in kwargs["label"].keys():
+            kwargs["label"]["divide"] = 1
+        # 计算label
+        if "shift1" in kwargs["label"].keys() and "shift2" in kwargs["label"].keys():
+            data["label"] = q.price2ret(data[kwargs["label"]["by"]], shift1=kwargs["label"]["shift1"],
+                                        shift2=kwargs["label"]["shift2"], groupby=data.index.names[1])
+        # 当除了"by"外没有任何信息时, 使用"by"并前移2项作为label
+        else:
+            if "shift" not in kwargs["label"].keys():
+                kwargs["label"]["shift"] = -2
+            data["label"] = data[kwargs["label"]["by"]].groupby(data.index.names[1]).shift(kwargs["label"]["shift"])
+    data["label"] += kwargs["label"]["add"]
+    data["label"] /= kwargs["label"]["divide"]
     return data
 
 
@@ -63,7 +81,7 @@ def get_factors(data, kwargs=None, auto_generate=False):
             "volume": "vol",
             "amount": "amount",
             "windows": [5, 10, 20, 30, 60],
-            "fillna": True
+            "fillna": False
         }
     kwargs["data"] = data
     X = alpha.make_factors(kwargs, windows=kwargs["windows"], fillna=kwargs["fillna"])
