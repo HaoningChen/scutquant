@@ -21,7 +21,7 @@
 联系方式(目前): 2434722850@qq.com
 
 ### Quant With YAML:  
-当你已经对量化投资有所了解, 又不愿意花费时间学习新的框架时, 可以在配置好yaml和data文件后, 使用[pipeline](https://github.com/HaoningChen/scutquant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/quant_with_yaml.ipynb)轻松进行量化研究
+当你已经对量化投资有所了解, 又不愿意花费时间学习新的框架时, 可以在配置好yaml和data文件后, 使用[pipeline](https://github.com/HaoningChen/scutquant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/quant_with_yaml.ipynb)轻松进行量化研究. 源代码请参考scutquant.Pipeline
 
 ## 环境要求  
 (最好有) Anaconda3   
