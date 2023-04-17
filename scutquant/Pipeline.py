@@ -121,7 +121,7 @@ def fit_data(result, target_dir="", kwargs=None, auto_generate=False):
     model = model(epochs=kwargs["params"]["epochs"])
     model.fit(X_train, y_train, X_valid, y_valid)
     if kwargs["save"]:
-        model.model.save(target_dir + "/model")
+        model.save(target_dir)
     pred = model.predict(X_test)
     pred = pd.DataFrame(pred, columns=["predict"], index=X_test.index)
     pred["predict"] += ymean.groupby(ymean.index.names[0]).shift(2).fillna(0.0002)
@@ -193,7 +193,7 @@ def report_results(exe, kwargs=None, auto_generate=False):
             "freq": 1,
             "rf": 0.03,
         }
-    rf, freq, time = kwargs["freq"], kwargs["rf"], exe.time
+    rf, freq, time = kwargs["rf"], kwargs["freq"], exe.time
     report.report_all(account, benchmark, freq=freq, rf=rf, time=exe.time)
 
 
@@ -249,7 +249,7 @@ def pipeline(target_dir="", all_kwargs=None, auto_generate=True, save_prediction
     data_concat = concat_data(factor, raw_data["label"])  # step3
     result = process_data(data_concat, k_process, auto_generate=auto_generate)  # step4
     predict = fit_data(result, target_dir=target_dir, kwargs=k_fit, auto_generate=auto_generate)  # step5
-    
+
     if save_prediction:
         predict.to_pickle(target_dir + "/predict.pkl")
 

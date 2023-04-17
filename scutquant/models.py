@@ -57,6 +57,13 @@ class DNN:
         predict = self.model.predict(x_test)
         return predict
 
+    def save(self, target_dir=''):
+        self.model.save(target_dir + "/dnn")
+
+    def load(self, target_dir=''):
+        model = models.load_model(target_dir + "/dnn")
+        self.model = model
+
 
 class LSTM:
     def __init__(self, n_layers=2, activation="swish", optimizer="adam", loss="mse", metrics=None, l1=1e-5, l2=1e-5,
@@ -99,6 +106,13 @@ class LSTM:
     def predict(self, x_test):
         predict = self.model.predict(x_test)
         return predict
+
+    def save(self, target_dir=''):
+        self.model.save(target_dir + "/lstm")
+
+    def load(self, target_dir=''):
+        model = models.load_model(target_dir + "/lstm")
+        self.model = model
 
 
 class Bi_LSTM:
@@ -143,6 +157,13 @@ class Bi_LSTM:
     def predict(self, x_test):
         predict = self.model.predict(x_test)
         return predict
+
+    def save(self, target_dir=''):
+        self.model.save(target_dir + "/bi-lstm")
+
+    def load(self, target_dir=''):
+        model = models.load_model(target_dir + "/bi-lstm")
+        self.model = model
 
 
 class Attention:
@@ -205,6 +226,13 @@ class Attention:
         predict = self.model.predict(x_test)
         return predict
 
+    def save(self, target_dir=''):
+        self.model.save(target_dir + "/attention")
+
+    def load(self, target_dir=''):
+        model = models.load_model(target_dir + "/attention")
+        self.model = model
+
 
 class CNN:
     def __init__(self, n_layers=2, filters=32, kernel_size=9, strides=3, activation="swish", optimizer="adam",
@@ -262,6 +290,13 @@ class CNN:
         predict = self.model.predict(x_test)
         return predict
 
+    def save(self, target_dir=''):
+        self.model.save(target_dir + "/cnn")
+
+    def load(self, target_dir=''):
+        model = models.load_model(target_dir + "/cnn")
+        self.model = model
+
 
 class Ensemble:
     # https://www.kaggle.com/competitions/ubiquant-market-prediction结果表明, 多个神经网络的ensemble要比单个的效果更好
@@ -299,9 +334,9 @@ class Ensemble:
 
     def save(self, target_dir=''):
         for i in range(len(self.models)):
-            self.models[i].model.save_model(target_dir + "model" + str(i))
+            self.models[i].save(target_dir + "/model" + str(i))
 
     def load(self, n_models, target_dir=''):
         for i in range(n_models):
-            model = models.load_model(target_dir + "model" + str(i))
+            model = models.load_model(target_dir + "/model" + str(i))
             self.models.append(model)
