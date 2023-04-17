@@ -23,7 +23,7 @@
 ### [report](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/report.py):  
 报告回测结果, 也可用于测试因子和模型预测值的单调性(见group_return_ana()函数)  
 ### [Pipeline](https://github.com/HaoningChen/scutquant/blob/main/scutquant/Pipeline.py):  
-集成了量化研究的全流程, 包括加载数据, 生成因子, 数据清洗和标准化, 搭建和训练模型, IC分析和回测. 仅需配置好all_kwargs.yaml和data文件即可用一行代码完成量化研究的全流程.  
+集成了量化研究的全流程. 包括加载数据, 生成因子, 数据清洗和标准化, 搭建和训练模型, IC分析和回测. 仅需配置好all_kwargs.yaml和data文件即可用一行代码完成量化研究.  
 
 
 ### 各部分基本上都能单独拿出来使用, 耦合度非常低(在底层代码基础上封装的executor, Pipeline和需要实时计算因子值的signal_generator模块除外)
