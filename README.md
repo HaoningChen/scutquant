@@ -16,6 +16,9 @@
 
 [教程](https://github.com/HaoningChen/ScutQuant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/tutorial.ipynb): 演示如何使用scutquant完成从数据分析到回测的全流程  
 
+### Quant With YAML:  
+当你已经对量化投资有所了解, 又不愿意花费时间学习新的框架时, 可以在配置好yaml和data文件后, 使用[pipeline](https://github.com/HaoningChen/scutquant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/quant_with_yaml.ipynb)轻松进行量化研究
+
 [文件](https://github.com/HaoningChen/ScutQuant/tree/main/文件): 存放技术沙龙文件和其它资料  
 
 联系方式(目前): 2434722850@qq.com
