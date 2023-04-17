@@ -104,9 +104,9 @@ def price2ret(price, shift1=-1, shift2=-2, groupby=None, fill=False):
     if groupby is None:
         ret = price.shift(shift2) / price.shift(shift1).fillna(price.mean) - 1
     else:
-        shift_1 = price.groupby([groupby]).shift(shift1).fillna(price.groupby(groupby).mean())
-        shift_2 = price.groupby([groupby]).shift(shift2).fillna(price.groupby(groupby).mean())
-        ret = (shift_2 / shift_1 + 1e-12) - 1
+        shift_1 = price.groupby([groupby]).shift(shift1)
+        shift_2 = price.groupby([groupby]).shift(shift2)
+        ret = shift_2 / shift_1 - 1
     if fill:
         ret.fillna(0, inplace=True)
     return ret
@@ -596,6 +596,17 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
 
     print('norm data done', '\n')
 
+    # 特征正则化
+    if orth:
+        r = cal_multicollinearity(X_train)
+        if r > 0.35:
+            print('To solve multicollinearity problem, orthogonal method will be applied')
+            result = make_pca(X_train)
+            pca, X_train = result["pca"], result["X_pca"]
+            X_valid = pca.transform(X_valid)
+            X_test = pca.transform(X_test)
+            print('PCA done')
+
     # 特征选择
     if select:
         mi_score = make_mi_scores(X_train, y_train)
@@ -604,16 +615,6 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
         X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
         X_valid = feature_selector(X_valid, mi_score)
         X_test = feature_selector(X_test, mi_score)
-
-    # 特征正则化
-    if orth:
-        r = cal_multicollinearity(X_train)
-        if r > 0.35:
-            print('To solve multicollinearity problem, orthogonal method will be applied')
-            X_train = make_pca(X_train)
-            X_valid = make_pca(X_valid)
-            X_test = make_pca(X_test)
-            print('PCA done')
 
     X_train, y_train = align(X_train, y_train)
     X_valid, y_valid = align(X_valid, y_valid)
