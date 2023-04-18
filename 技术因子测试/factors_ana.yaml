@@ -1,0 +1,29 @@
+data:
+  format: csv
+  index_col:
+  - datetime
+  - ts_code
+  index_names:
+  - datetime
+  - instrument
+  label:
+    by: pct_chg
+    divide: 100
+  process_nan: true
+factor:
+  calc_factors: null
+  calculate: true
+process:
+  clip_data: 3
+  groupby: stock_code
+  label: label
+  label_norm: true
+  normalization: z
+  orth_data: false
+  select_features: false
+  split:
+    split_kwargs:
+      train_end_date: '2018-12-28'
+      valid_end_date: '2018-12-31'
+    split_method: split_by_date
+    test_start_date: '2019-01-01'
