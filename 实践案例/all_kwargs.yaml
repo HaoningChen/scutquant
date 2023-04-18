@@ -1,0 +1,37 @@
+backtest: null
+data:
+  format: csv
+  index_col:
+  - datetime
+  - ts_code
+  index_names:
+  - datetime
+  - instrument
+  label:
+    by: pct_chg
+    divide: 100
+  process_nan: true
+factor: null
+fit:
+  model: Ensemble
+  params:
+    epochs: 15
+  save: true
+prepare:
+  deal_price: close
+  volume: vol
+process:
+  clip_data: 3
+  groupby: stock_code
+  label: label
+  label_norm: true
+  normalization: z
+  orth_data: false
+  select_features: false
+  split:
+    split_kwargs:
+      train: 0.7
+      valid: 0.3
+    split_method: split
+    test_start_date: '2019-01-01'
+report: null
