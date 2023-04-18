@@ -2,6 +2,7 @@ from . import scutquant as q
 from . import alpha, models, executor, report
 import yaml
 import pandas as pd
+from joblib import Parallel, delayed
 
 """
 Build workflows with yaml files
@@ -10,6 +11,29 @@ Build workflows with yaml files
 数据统一命名为data, 后缀支持csv, xls, xlsx, pkl, pickle, ftr, feather
 所有结果也将保存到此目录
 """
+
+
+def calc_ic(X, y, n_jobs=-1):
+    all_ic_df = pd.DataFrame(columns=X.columns)
+    name = X.index.names[0]
+
+    # 定义计算单个列的函数
+    def calc_ic_col(col):
+        concat_df = pd.concat([X[col], y], axis=1)
+        single_ic = concat_df.groupby(name).apply(lambda x: x[col].corr(x[y.name]))
+        return single_ic
+
+    # 单核计算或多核并行计算
+    if n_jobs == 1:
+        for c in X.columns:
+            all_ic_df[c] = calc_ic_col(c)
+    else:
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(calc_ic_col)(c) for c in X.columns
+        )
+        for c, ic in zip(X.columns, results):
+            all_ic_df[c] = ic
+    return all_ic_df
 
 
 def load_data(target_dir="", kwargs=None, auto_generate=False):
@@ -119,7 +143,7 @@ def process_data(data, kwargs=None, auto_generate=False):
         kwargs["groupby"] = data.index.names[1]
     result = q.auto_process(data, kwargs["label"], groupby=kwargs["groupby"], norm=kwargs["normalization"],
                             label_norm=kwargs["label_norm"], select=kwargs["select_features"], orth=kwargs["orth_data"],
-                            split_params=kwargs["split"])
+                            split_params=kwargs["split"], clip=kwargs["clip_data"])
     return result
 
 
@@ -222,42 +246,38 @@ def pipeline(target_dir="", all_kwargs=None, auto_generate=True, save_prediction
         file.close()
 
     def init():
-        if all_kwargs is not None:
-            if "data" in all_kwargs.keys():
-                data_kwargs = all_kwargs["data"]
-            else:
-                data_kwargs = None
-
-            if "factor" in all_kwargs.keys():
-                factor_kwargs = all_kwargs["factor"]
-            else:
-                factor_kwargs = None
-
-            if "process" in all_kwargs.keys():
-                process_kwargs = all_kwargs["process"]
-            else:
-                process_kwargs = None
-
-            if "fit" in all_kwargs.keys():
-                fit_kwargs = all_kwargs["fit"]
-            else:
-                fit_kwargs = None
-
-            if "prepare" in all_kwargs.keys():
-                prepare_kwargs = all_kwargs["prepare"]
-            else:
-                prepare_kwargs = None
-            if "backtest" in all_kwargs.keys():
-                backtest_kwargs = all_kwargs["backtest"]
-            else:
-                backtest_kwargs = None
-            if "report" in all_kwargs.keys():
-                report_kwargs = all_kwargs["report"]
-            else:
-                report_kwargs = None
+        if "data" in all_kwargs.keys():
+            data_kwargs = all_kwargs["data"]
         else:
-            data_kwargs, factor_kwargs, process_kwargs, fit_kwargs, prepare_kwargs, backtest_kwargs, report_kwargs = \
-                None, None, None, None, None, None, None
+            data_kwargs = None
+
+        if "factor" in all_kwargs.keys():
+            factor_kwargs = all_kwargs["factor"]
+        else:
+            factor_kwargs = None
+
+        if "process" in all_kwargs.keys():
+            process_kwargs = all_kwargs["process"]
+        else:
+            process_kwargs = None
+
+        if "fit" in all_kwargs.keys():
+            fit_kwargs = all_kwargs["fit"]
+        else:
+            fit_kwargs = None
+
+        if "prepare" in all_kwargs.keys():
+            prepare_kwargs = all_kwargs["prepare"]
+        else:
+            prepare_kwargs = None
+        if "backtest" in all_kwargs.keys():
+            backtest_kwargs = all_kwargs["backtest"]
+        else:
+            backtest_kwargs = None
+        if "report" in all_kwargs.keys():
+            report_kwargs = all_kwargs["report"]
+        else:
+            report_kwargs = None
         return data_kwargs, factor_kwargs, process_kwargs, fit_kwargs, prepare_kwargs, backtest_kwargs, report_kwargs
 
     k_data, k_factor, k_process, k_fit, k_prepare, k_backtest, k_report = init()
@@ -277,3 +297,60 @@ def pipeline(target_dir="", all_kwargs=None, auto_generate=True, save_prediction
     report.group_return_ana(predict, result["y_test"])  # step8
     exe = backtest(predict, kwargs=k_backtest, auto_generate=auto_generate)  # step9
     report_results(exe, kwargs=k_report, auto_generate=auto_generate)  # step10
+
+
+def all_factors_ana(target_dir="", kwargs=None, auto_generate=True):
+    # 初始化kwargs
+    if kwargs is None:
+        with open(target_dir + "/factors_ana.yaml", 'r') as file:
+            kwargs = yaml.load(file, Loader=yaml.FullLoader)
+        file.close()
+    data_kwargs = kwargs["data"] if "data" in kwargs.keys() else None
+    factor_kwargs = kwargs["factor"]["calc_factors"] if "calc_factors" in kwargs["factor"].keys() else None
+    process_kwargs = kwargs["process"] if "process" in kwargs.keys() else None
+
+    # 加载数据并计算因子
+    data = load_data(target_dir=target_dir, kwargs=data_kwargs, auto_generate=auto_generate)
+    if kwargs["factor"]["calculate"] is True:
+        factor = get_factors(data, factor_kwargs, auto_generate=auto_generate)
+    else:
+        factor = data.copy().pop("label")
+
+    # 数据清洗, 拆分features和label
+    data_concat = concat_data(factor, data["label"])
+    result = process_data(data_concat, process_kwargs, auto_generate=auto_generate)
+    features, label = result["X_train"], result["y_train"]
+    features_test, label_test = result["X_test"], result["y_test"]
+    label_mean, label_std = result["ymean"], result["ystd"]
+
+    # 计算IC
+    n_periods = len(features.index.get_level_values(0).unique())
+    all_ic_df = calc_ic(features, label)
+
+    # 原始的IC序列
+    all_ic_df.to_pickle(target_dir + "/all_ic_df.pkl")
+
+    # IC均值, 标准差和因子t统计量
+    ic_mean = all_ic_df.mean()
+    ic_std = all_ic_df.std()
+    icir = ic_mean / ic_std
+    t_stat = icir * (n_periods ** 0.5)
+    factors_performance = pd.DataFrame({"ic_mean": ic_mean, "ic_std": ic_std, "icir": icir, "t-stat": t_stat},
+                                       index=features.columns)
+    factors_performance.to_csv(target_dir + "/factors_performance.csv")
+    print("abs all_ic mean:", abs(ic_mean).mean())
+    print("abs t-stat mean:", abs(t_stat).mean())
+
+    # 查看总体IC(对因子进行加权)
+    simple_model = q.auto_lrg(features, label, verbose=0)
+    prediction = simple_model.predict(features_test)
+    prediction = pd.DataFrame(prediction, columns=["predict"], index=features_test.index)
+    prediction["predict"] += label_mean
+    prediction["predict"] *= label_std
+    concat_df = concat_data(prediction["predict"], label_test)
+    total_ic = concat_df.groupby(concat_df.index.names[0]).apply(lambda x: x["predict"].corr(x["label"]))
+    print("weighted_average_ic in test set:", total_ic.mean())
+
+    # 总体IC的分层效应
+    report.group_return_ana(prediction, label_test, groupby=prediction.index.names[0])
+
