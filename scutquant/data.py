@@ -28,6 +28,7 @@ def get_index_stock_cons(index_code='000300', freq="daily", start="20230330", en
         df = pd.concat([df, stock_data], axis=0)
     df = df.set_index(["日期", "code"]).sort_index()
     df.index.names = ["datetime", "code"]
+    df = df[~df.index.duplicated()]
     df.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pcg_chg", "turnover"]
     return df
 
@@ -75,6 +76,7 @@ def get_daily_data(index_code, adjust=""):
             data = pd.concat([data, stock_data], axis=0)
     data = data.set_index(["日期", "code"]).sort_index()
     data.index.names = ["datetime", "code"]
+    df = df[~df.index.duplicated()]
     data.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pct_chg", "turnover"]
     return data
 
@@ -88,5 +90,6 @@ def get_high_freq_data(index_code="000300", minutes=1, adjust="hfq"):
         stock_data["code"] = stock_code
         df = pd.concat([df, stock_data], axis=0)
     df = df.set_index(["day", "code"]).sort_index()
+    df = df[~df.index.duplicated()]
     return df
     
