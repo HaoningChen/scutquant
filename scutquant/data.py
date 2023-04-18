@@ -77,3 +77,16 @@ def get_daily_data(index_code, adjust=""):
     data.index.names = ["datetime", "code"]
     data.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pct_chg", "turnover"]
     return data
+
+
+def get_high_freq_data(index_code="000300", minutes=1, adjust="hfq"):
+    cons = ak.index_stock_cons(symbol=index_code)
+    df = pd.DataFrame()
+    for code in cons["品种代码"]:
+        stock_code = "sh" + code if code[0] == "6" else "sz" + code
+        stock_data = ak.stock_zh_a_minute(symbol=stock_code, period=str(minutes), adjust=adjust)
+        stock_data["code"] = stock_code
+        df = pd.concat([df, stock_data], axis=0)
+    df = df.set_index(["day", "code"]).sort_index()
+    return df
+    
