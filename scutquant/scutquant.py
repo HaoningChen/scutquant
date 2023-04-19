@@ -212,7 +212,7 @@ def symmetric(X):  # 对称正交
     return X
 
 
-def cal_multicollinearity(X, show=False):
+def calc_multicollinearity(X, show=False):
     """
         反映多重共线性严重程度
     """
@@ -296,30 +296,22 @@ def percentage_missing(X):
     return percent_missing
 
 
-def dropna(X, axis=0):
-    X = X.dropna(axis=axis)
-    return X
 
-
-def fillna(X, method='ffill'):
-    X = X.fillna(method=method)
-    return X
-
-
-def process_inf(X):
+def process_inf(X: pd.DataFrame) -> pd.DataFrame:
     for col in X.columns:
         X[col] = X[col].replace([np.inf, -np.inf], X[col][~np.isinf(X[col])].mean())
     return X
 
 
-def clean(X, axis=0):
+def clean(X: pd.DataFrame, method: str="ffill") -> pd.DataFrame:
     X.dropna(axis=1, how='all', inplace=True)
-    X = fillna(X)
-    X = dropna(X, axis)
+    X.fillna(method=method, inplace=True)
+    X.dropna(axis=0, inplace=True)
+    X = process_inf(X)
     return X
 
 
-def cal_0(X, method='precise', val=0):  # 计算0或者其它数值的占比
+def calc_0(X, method='precise', val=0):  # 计算0或者其它数值的占比
     """
     :param X: pd.DataFrame, 输入的数据
     :param method: 'precise' or 'range'，需要计算占比的是数值还是某个范围
@@ -520,7 +512,7 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
     print("split data done", "\n")
 
     # 降采样
-    X_0 = cal_0(y_train)
+    X_0 = calc_0(y_train)
     if X_0 > 0.5:
         print('The types of label value are imbalance, apply down sample method', '\n')
         X_train = down_sample(X_train, col=y)
@@ -586,19 +578,19 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
             X_valid = ranknorm(X_valid, groupby=date)
             X_test = ranknorm(X_test, groupby=date)
 
-        X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
-        X_valid = X_valid.groupby([groupby]).fillna(method='ffill').dropna()
-        X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
+        # X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
+        X_train = X_train.groupby(groupby).apply(lambda x: clean(x))
+        # X_valid = X_valid.groupby([groupby]).fillna(method='ffill').dropna()
+        X_valid= X_valid.groupby(groupby).apply(lambda x: clean(x))
+        # X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
+        X_test = X_test.groupby(groupby).apply(lambda x: clean(x))
 
-    X_train.dropna(axis=1, how='all', inplace=True)
-    X_valid.dropna(axis=1, how='all', inplace=True)
-    X_test.dropna(axis=1, how='all', inplace=True)
 
     print('norm data done', '\n')
 
     # 特征正则化
     if orth:
-        r = cal_multicollinearity(X_train)
+        r = calc_multicollinearity(X_train)
         if r > 0.35:
             print('To solve multicollinearity problem, orthogonal method will be applied')
             result = make_pca(X_train)
