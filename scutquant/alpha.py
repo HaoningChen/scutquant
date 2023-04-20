@@ -45,14 +45,14 @@ import time
 from scipy.stats import norm
 
 
-def cal_dif(prices, n=12, m=26):
+def cal_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
     ema_n = prices.ewm(span=n, min_periods=n - 1).mean()
     ema_m = prices.ewm(span=m, min_periods=m - 1).mean()
     dif = ema_n - ema_m
     return dif
 
 
-def cal_dea(dif, k=9):
+def cal_dea(dif: pd.Series, k: int = 9) -> pd.Series:
     dea = dif.ewm(span=k, min_periods=k - 1).mean()
     return dea
 
@@ -85,7 +85,7 @@ def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
     return psy
 
 
-def VaR(x: pd.Series, prob=0.05) -> float:
+def VaR(x: pd.Series, prob: int = 0.05) -> float:
     """
     :param x: pd.Series
     :param prob: float
@@ -97,7 +97,7 @@ def VaR(x: pd.Series, prob=0.05) -> float:
 
 
 # 各大类特征
-def MACD(X, data_group, groupby, name=None):
+def MACD(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, groupby: str, name=None) -> pd.DataFrame:
     # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
     if name is None:
         name = ["DIF", "DEA"]
@@ -107,7 +107,8 @@ def MACD(X, data_group, groupby, name=None):
     return pd.concat([X, features], axis=1)
 
 
-def RET(X, data, data_group, groupby, name="RET"):
+def RET(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, groupby: str, name: str = "RET") \
+        -> pd.DataFrame:
     features = pd.DataFrame()
     for i in range(1, 5):
         features[name + "1_" + str(i)] = (data / data_group.shift(i) - 1)
@@ -115,14 +116,15 @@ def RET(X, data, data_group, groupby, name="RET"):
     return pd.concat([X, features], axis=1)
 
 
-def SHIFT(X, data, data_group, windows, name):
+def SHIFT(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list, name: str) -> pd.DataFrame:
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = data_group.shift(w) / data
     return pd.concat([X, features], axis=1)
 
 
-def ROC(X, data, data_group, windows, name="ROC"):
+def ROC(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "ROC") \
+        -> pd.DataFrame:
     # https://www.investopedia.com/terms/r/rateofchange.asp
     features = pd.DataFrame()
     for w in windows:
@@ -130,7 +132,8 @@ def ROC(X, data, data_group, windows, name="ROC"):
     return pd.concat([X, features], axis=1)
 
 
-def BETA(X, data, data_group, windows, name="BETA"):
+def BETA(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "BETA") \
+        -> pd.DataFrame:
     # The rate of close price change in the past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
@@ -138,7 +141,7 @@ def BETA(X, data, data_group, windows, name="BETA"):
     return pd.concat([X, features], axis=1)
 
 
-def MA(X, data, data_group, windows, name="MA"):
+def MA(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "MA") -> pd.DataFrame:
     # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
     features = pd.DataFrame()
     for w in windows:
@@ -146,7 +149,8 @@ def MA(X, data, data_group, windows, name="MA"):
     return pd.concat([X, features], axis=1)
 
 
-def STD(X, data, data_group, windows, name="STD"):
+def STD(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "STD") \
+        -> pd.DataFrame:
     # The standard deviation of close price for the past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
@@ -154,7 +158,8 @@ def STD(X, data, data_group, windows, name="STD"):
     return pd.concat([X, features], axis=1)
 
 
-def MAX(X, data, data_group, windows, name="MAX"):
+def MAX(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list,
+        name: str = "MAX") -> pd.DataFrame:
     # The max price for past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
@@ -162,7 +167,8 @@ def MAX(X, data, data_group, windows, name="MAX"):
     return pd.concat([X, features], axis=1)
 
 
-def MIN(X, data, data_group, windows, name="MIN"):
+def MIN(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list,
+        name: str = "MIN") -> pd.DataFrame:
     # The low price for past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
@@ -170,7 +176,16 @@ def MIN(X, data, data_group, windows, name="MIN"):
     return pd.concat([X, features], axis=1)
 
 
-def QTL(X, data, data_group, windows, name="QTL"):
+def RANK(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "RANK") -> pd.DataFrame:
+    # 当前价格在过去一段时间中所处的水平
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).rank(pct=True))
+    return pd.concat([X, features], axis=1)
+
+
+def QTL(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.GroupBy, windows: list,
+        name: str = "QTL") -> pd.DataFrame:
     # The x% quantile of past d day's close price, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
@@ -179,7 +194,8 @@ def QTL(X, data, data_group, windows, name="QTL"):
     return pd.concat([X, features], axis=1)
 
 
-def CORR(X, data1_group, data2, windows, name="CORR"):
+def CORR(X: pd.DataFrame, data1_group: pd.core.groupby.GroupBy, data2: pd.Series, windows: list,
+         name: str = "CORR") -> pd.DataFrame:
     # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数
     # (rolling=30, 60), 则有可能是个股发生了异动, 可根据异动的方向选择个股与大盘的多空组合
     features = pd.DataFrame()
@@ -188,21 +204,21 @@ def CORR(X, data1_group, data2, windows, name="CORR"):
     return pd.concat([X, features], axis=1)
 
 
-def RSI(X, data_group, windows, name="RSI"):
+def RSI(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = data_group.transform(lambda x: cal_rsi(x, w))
     return pd.concat([X, features], axis=1)
 
 
-def PSY(X, data_group, windows, name="PSY"):
+def PSY(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, windows: list, name: str = "PSY") -> pd.DataFrame:
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = data_group.transform(lambda x: cal_psy(x, w))
     return pd.concat([X, features], axis=1)
 
 
-def PERF(X, data, group_idx, name="PERF"):
+def PERF(X: pd.DataFrame, data: pd.Series, group_idx: pd.core.groupby.GroupBy, name="PERF") -> pd.DataFrame:
     # performance: 股票当日收益率相对大盘的表现
     features = pd.DataFrame()
     features[name + "1"] = data / (group_idx.mean() + 1e-12)
@@ -212,7 +228,7 @@ def PERF(X, data, group_idx, name="PERF"):
     return pd.concat([X, features], axis=1)
 
 
-def IDX(X, data, idx, windows, name="IDX"):
+def IDX(X: pd.DataFrame, data: pd.Series, idx: pd.Series, windows: list, name: str = "IDX") -> pd.DataFrame:
     # 收盘价相对开盘价的变化, 与大盘的移动平均线对比
     features = pd.DataFrame()
     for w in windows:
@@ -223,7 +239,8 @@ def IDX(X, data, idx, windows, name="IDX"):
     return pd.concat([X, features], axis=1)
 
 
-def RSV(X, data, low_group, high_group, windows, name="RSV"):
+def RSV(X: pd.DataFrame, data: pd.Series, low_group: pd.core.groupby.GroupBy, high_group: pd.core.groupby.GroupBy,
+        windows: list, name: str = "RSV") -> pd.DataFrame:
     # Represent the price position between upper and lower resistant price for past d days.
     features = pd.DataFrame()
     for w in windows:
@@ -234,7 +251,7 @@ def RSV(X, data, low_group, high_group, windows, name="RSV"):
 
 
 # Greeks for stocks
-def DELTA(X, ret_group, idx_return, name="DELTA"):
+def DELTA(X: pd.DataFrame, ret_group: pd.core.groupby.GroupBy, idx_return: pd.Series, name: str = "DELTA") -> pd.DataFrame:
     # The delta of option greeks
     # DELTA = partial P / partial S. Let P be R_it and S be R_m
     features = pd.DataFrame()
@@ -242,7 +259,7 @@ def DELTA(X, ret_group, idx_return, name="DELTA"):
     return pd.concat([X, features], axis=1)
 
 
-def GAMMA(X, idx_return, name="GAMMA"):
+def GAMMA(X: pd.DataFrame, idx_return: pd.Series, name: str = "GAMMA") -> pd.DataFrame:
     # The gamma of greek value, which equals partial DELTA / partial S
     # suppose delta DELTA  = gamma * delta S, which means gamma = delta DELTA / delta S
     features = pd.DataFrame()
@@ -250,7 +267,7 @@ def GAMMA(X, idx_return, name="GAMMA"):
     return pd.concat([X, features], axis=1)
 
 
-def VEGA(X, ret_group, windows, name="VEGA"):
+def VEGA(X: pd.DataFrame, ret_group: pd.core.groupby.GroupBy, windows: list, name: str = "VEGA") -> pd.DataFrame:
     # The vega of greek value
     # delta p / delta sigma
     delta_ret = ret_group.diff()
@@ -261,7 +278,7 @@ def VEGA(X, ret_group, windows, name="VEGA"):
 
 
 # 来自金融风险管理的因子
-def VAR(X, ret_group, windows, name="VAR"):
+def VAR(X: pd.DataFrame, ret_group: pd.core.groupby.GroupBy, windows: list, name: str = "VAR") -> pd.DataFrame:
     # the VaR of return at prob 5%
     features = pd.DataFrame()
     for w in windows:
@@ -269,7 +286,7 @@ def VAR(X, ret_group, windows, name="VAR"):
     return pd.concat([X, features], axis=1)
 
 
-def make_factors(kwargs=None, windows=None, fillna=False):
+def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False) -> pd.DataFrame:
     """
     面板数据适用，序列数据请移步 make_factors_series
 
