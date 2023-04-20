@@ -95,8 +95,8 @@ def price2ret(price, shift1=-1, shift2=-2, groupby=None, fill=False):
     return_rate = price_shift2 / price_shift1 - 1
 
     :param price: pd.DataFrame
-    :param shift1: int
-    :param shift2: int
+    :param shift1: int, the value shift as denominator
+    :param shift2: int, the value shift as numerator
     :param groupby: str
     :param fill: bool
     :return: pd.Series
@@ -199,19 +199,6 @@ def plot_pca_variance(pca):
     return axs
 
 
-def symmetric(X):  # 对称正交
-    col = X.columns
-    index = X.index
-    M = (X.shape[0] - 1) * np.cov(X.T.astype(float))
-    D, U = np.linalg.eig(M)
-    U = np.mat(U)
-    d = np.mat(np.diag(D ** (-0.5)))
-    S = U * d * U.T
-    X = np.mat(X) * S
-    X = pd.DataFrame(X, columns=col, index=index)
-    return X
-
-
 def calc_multicollinearity(X, show=False):
     """
         反映多重共线性严重程度
@@ -284,6 +271,14 @@ def feature_selector(df, score, value=0, verbose=0):
 # 数据清洗
 ####################################################
 def align(x, y):
+    """
+    align x's index with y
+    :param x: pd.DataFrame or pd.Series
+    :param y: pd.DataFrame or pd.Series
+    :return: pd.DataFrame(or pd.Series), pd.DataFrame(or pd.Series)
+    """
+    print(x.index.names)
+    print(y.index.names)
     if len(x) > len(y):
         x = x[x.index.isin(y.index)]
     elif len(y) > len(x):
@@ -296,18 +291,17 @@ def percentage_missing(X):
     return percent_missing
 
 
-
 def process_inf(X: pd.DataFrame) -> pd.DataFrame:
     for col in X.columns:
         X[col] = X[col].replace([np.inf, -np.inf], X[col][~np.isinf(X[col])].mean())
     return X
 
 
-def clean(X: pd.DataFrame, method: str="ffill") -> pd.DataFrame:
+def clean(X: pd.DataFrame) -> pd.DataFrame:
     X.dropna(axis=1, how='all', inplace=True)
-    X.fillna(method=method, inplace=True)
+    X.fillna(method='ffill', inplace=True)
     X.dropna(axis=0, inplace=True)
-    X = process_inf(X)
+    # X = process_inf(X)
     return X
 
 
@@ -578,26 +572,17 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
             X_valid = ranknorm(X_valid, groupby=date)
             X_test = ranknorm(X_test, groupby=date)
 
-        # X_train = X_train.groupby([groupby]).fillna(method='ffill').dropna()
-        X_train = X_train.groupby(groupby).apply(lambda x: clean(x))
-        # X_valid = X_valid.groupby([groupby]).fillna(method='ffill').dropna()
-        X_valid= X_valid.groupby(groupby).apply(lambda x: clean(x))
-        # X_test = X_test.groupby([groupby]).fillna(method='ffill').dropna()
-        X_test = X_test.groupby(groupby).apply(lambda x: clean(x))
-
+        X_train = X_train.groupby(groupby).fillna(method='ffill').dropna()
+        X_valid = X_valid.groupby(groupby).fillna(method='ffill').dropna()
+        X_test = X_test.groupby(groupby).fillna(method='ffill').dropna()
 
     print('norm data done', '\n')
 
-    # 特征正则化
+    # PCA降维
     if orth:
-        r = calc_multicollinearity(X_train)
-        if r > 0.35:
-            print('To solve multicollinearity problem, orthogonal method will be applied')
-            result = make_pca(X_train)
-            pca, X_train = result["pca"], result["X_pca"]
-            X_valid = pca.transform(X_valid)
-            X_test = pca.transform(X_test)
-            print('PCA done')
+        result = make_pca(X_train)
+        pca, X_train = result["pca"], result["X_train"]
+        X_valid, X_test = pca.transform(X_valid), pca.transform(X_test)
 
     # 特征选择
     if select:

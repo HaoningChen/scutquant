@@ -206,6 +206,15 @@ def CORR(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.
     return pd.concat([X, features], axis=1)
 
 
+def PairCorr(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.DataFrame, windows: list,
+             name: str = "CORR") -> pd.DataFrame:
+    # data1_group与data2中的各个对象计算相关系数. 例如volume在窗口为5, 10, 20时, 与对应窗口的波动率计算相关系数
+    features = pd.DataFrame()
+    for w_id in range(len(windows)):
+        features[name + str(windows[w_id])] = data1_group.transform(lambda x: x.rolling(windows[w_id]).corr(data2.iloc[:, w_id]))
+    return pd.concat([X, features], axis=1)
+
+
 def RSI(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
     features = pd.DataFrame()
     for w in windows:
@@ -381,6 +390,7 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         X = STD(X, data[close], group_c, windows=windows)
         X = MAX(X, data[close], group_c, windows=windows)
         X = MIN(X, data[close], group_c, windows=windows)
+        # X = RANK(X, group_c, windows=windows)
         X = QTL(X, data[close], group_c, windows=windows)
         # X = MA(X, data["ret"], group_r, windows=windows, name="MA2_")
         # X = STD(X, data["ret"], group_r, windows=windows, name="STD2_")
@@ -433,9 +443,16 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
                     features["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
                     features["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
                     features["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
-                    X = pd.concat([X, features], axis=1)
                     X = RSV(X, data[close], group_l, group_h, windows=windows)
+
+                    # 在世坤的BRAIN挖到的因子
+                    vwap_mean = features["VWAP"].groupby(datetime).mean()
+                    rank_group = data["close"].groupby("datetime").rank(pct=True).groupby(groupby)
+                    X = CORR(X, rank_group, vwap_mean, windows=windows, name="CORR4_")
+                    del vwap_mean, rank_group
+            X = pd.concat([X, features], axis=1)
             del features
+
     if open is not None:
         X = SHIFT(X, data[open], group_o, windows=windows, name="OPEN")
 
@@ -449,13 +466,9 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         X = SHIFT(X, data[low], group_l, windows=windows, name="LOW")
 
     if volume is not None:
-        # data["chg_vol"] = data[volume] / group_v.shift(1) - 1
-        # group_rv = data["chg_vol"].groupby(groupby)
         X = SHIFT(X, data[volume], group_v, windows=windows, name="VOLUME")
         X = MA(X, data[volume], group_v, windows=windows, name="VMA")
         X = STD(X, data[volume], group_v, windows=windows, name="VSTD")
-        # X = MA(X, data["chg_vol"], group_rv, windows=windows, name="VMA2_")
-        # X = STD(X, data["chg_vol"], group_rv, windows=windows, name="VSTD2_")
         X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
         if amount is not None:
             mean = data[amount] / data[volume]
@@ -463,14 +476,12 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
             X["MEAN2"] = mean / mean.groupby(datetime).mean()
             X = SHIFT(X, mean, group_mean, windows=windows, name="MEAN2_")
             del mean, group_mean
-        """
         if close is not None:
-            group_r = data[close] / group_c.shift(1) - 1
-            # 收益率和chg_vol的相关系数
-            X = CORR(X, group_r, data["chg_vol"], windows=windows, name="CORRCV")
-            del group_r
-        """
-
+            data["vol_chg"] = group_v.pct_change()
+            ts_vol = data["vol_chg"].groupby(datetime).mean()
+            del data["vol_chg"]
+            X = CORR(X, group_v, ts_vol, windows=windows, name="CORR3_")
+            del ts_vol
     if amount is not None:
         X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
 
