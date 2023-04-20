@@ -479,12 +479,15 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
             X["MEAN2"] = mean / mean.groupby(datetime).mean()
             X = SHIFT(X, mean, group_mean, windows=windows, name="MEAN2_")
             del mean, group_mean
+        """
         if close is not None:
             data["vol_chg"] = group_v.pct_change().fillna(0)
             ts_vol = data["vol_chg"].groupby(datetime).mean()
             del data["vol_chg"]
             X = CORR(X, group_c, ts_vol, windows=windows, name="CORR3_")
             del ts_vol
+        """
+        
     if amount is not None:
         X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
 
