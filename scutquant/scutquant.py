@@ -277,8 +277,8 @@ def align(x, y):
     :param y: pd.DataFrame or pd.Series
     :return: pd.DataFrame(or pd.Series), pd.DataFrame(or pd.Series)
     """
-    print(x.index.names)
-    print(y.index.names)
+    # print(x.index.names)
+    # print(y.index.names)
     if len(x) > len(y):
         x = x[x.index.isin(y.index)]
     elif len(y) > len(x):

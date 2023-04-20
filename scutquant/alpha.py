@@ -393,7 +393,7 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         X = STD(X, data[close], group_c, windows=windows)
         X = MAX(X, data[close], group_c, windows=windows)
         X = MIN(X, data[close], group_c, windows=windows)
-        # X = RANK(X, group_c, windows=windows)
+        X = RANK(X, group_r, windows=windows)
         X = QTL(X, data[close], group_c, windows=windows)
         # X = MA(X, data["ret"], group_r, windows=windows, name="MA2_")
         # X = STD(X, data["ret"], group_r, windows=windows, name="STD2_")
@@ -449,10 +449,11 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
                     X = RSV(X, data[close], group_l, group_h, windows=windows)
 
                     # 在世坤的BRAIN挖到的因子
-                    # vwap_mean = features["VWAP"].groupby(datetime).mean()
-                    # rank_group = data["close"].groupby("datetime").rank(pct=True).groupby(groupby)
-                    # X = CORR(X, rank_group, vwap_mean, windows=windows, name="CORR3_")
-                    # del vwap_mean, rank_group
+                    vwap_mean = features["VWAP"].groupby(datetime).mean()
+                    data["rank"] = data["ret"].groupby("datetime").rank(pct=True)
+                    group_r_rank = data["rank"].groupby(groupby)
+                    X = CORR(X, group_r_rank, vwap_mean, windows=windows, name="CORR3_")
+                    del vwap_mean, group_r_rank, data["rank"]
             X = pd.concat([X, features], axis=1)
             del features
 
@@ -484,10 +485,10 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
             data["vol_chg"] = group_v.pct_change().fillna(0)
             ts_vol = data["vol_chg"].groupby(datetime).mean()
             del data["vol_chg"]
-            X = CORR(X, group_c, ts_vol, windows=windows, name="CORR3_")
+            X = CORR(X, group_c, ts_vol, windows=windows, name="CORR4_")
             del ts_vol
         """
-        
+
     if amount is not None:
         X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
 
