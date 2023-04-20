@@ -81,7 +81,7 @@ def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
     diff[diff <= 0] = 0
 
     # 计算PSY指标(其实是个分类指标, 在windows=w时, 最多有w+1个unique value(例如在windows=5时, 有0, 20, 40, 60, 80, 100))
-    psy = diff.rolling(windows).sum() / windows * 100
+    psy = diff.rolling(windows, min_periods=windows - 1).sum() / windows * 100
     return psy
 
 
@@ -147,7 +147,7 @@ def MA(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroup
     # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).mean()) / data
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).mean()) / data
     return pd.concat([X, features], axis=1)
 
 
@@ -156,7 +156,7 @@ def STD(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGrou
     # The standard deviation of close price for the past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).std()) / data
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).std()) / data
     return pd.concat([X, features], axis=1)
 
 
@@ -165,7 +165,7 @@ def MAX(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGrou
     # The max price for past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).max()) / data
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).max()) / data
     return pd.concat([X, features], axis=1)
 
 
@@ -174,7 +174,7 @@ def MIN(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGrou
     # The low price for past d days, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).min()) / data
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).min()) / data
     return pd.concat([X, features], axis=1)
 
 
@@ -182,7 +182,7 @@ def RANK(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: li
     # 当前价格在过去一段时间中所处的水平
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w).rank(pct=True))
+        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).rank(pct=True))
     return pd.concat([X, features], axis=1)
 
 
@@ -191,8 +191,10 @@ def QTL(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGrou
     # The x% quantile of past d day's close price, divided by latest close price to remove unit
     features = pd.DataFrame()
     for w in windows:
-        features[name + "U" + str(w)] = data_group.transform(lambda x: x.rolling(w).quantile(0.8)) / data
-        features[name + "D" + str(w)] = data_group.transform(lambda x: x.rolling(w).quantile(0.2)) / data
+        features[name + "U" + str(w)] = data_group.transform(
+            lambda x: x.rolling(w, min_periods=w - 1).quantile(0.8)) / data
+        features[name + "D" + str(w)] = data_group.transform(
+            lambda x: x.rolling(w, min_periods=w - 1).quantile(0.2)) / data
     return pd.concat([X, features], axis=1)
 
 
@@ -202,7 +204,7 @@ def CORR(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.
     # (rolling=30, 60), 则有可能是个股发生了异动, 可根据异动的方向选择个股与大盘的多空组合
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data1_group.transform(lambda x: x.rolling(w).corr(data2))
+        features[name + str(w)] = data1_group.transform(lambda x: x.rolling(w, min_periods=w - 1).corr(data2))
     return pd.concat([X, features], axis=1)
 
 
@@ -211,7 +213,8 @@ def PairCorr(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2:
     # data1_group与data2中的各个对象计算相关系数. 例如volume在窗口为5, 10, 20时, 与对应窗口的波动率计算相关系数
     features = pd.DataFrame()
     for w_id in range(len(windows)):
-        features[name + str(windows[w_id])] = data1_group.transform(lambda x: x.rolling(windows[w_id]).corr(data2.iloc[:, w_id]))
+        features[name + str(windows[w_id])] = data1_group.transform(
+            lambda x: x.rolling(windows[w_id], min_periods=windows[w_id] - 1).corr(data2.iloc[:, w_id]))
     return pd.concat([X, features], axis=1)
 
 
@@ -243,10 +246,10 @@ def IDX(X: pd.DataFrame, data: pd.Series, idx: pd.Series, windows: list, name: s
     # 收盘价相对开盘价的变化, 与大盘的移动平均线对比
     features = pd.DataFrame()
     for w in windows:
-        features[name + "1_" + str(w)] = data / (idx.rolling(w).mean() + 1e-12)
-        features[name + "2_" + str(w)] = data / (idx.rolling(w).max() + 1e-12)
-        features[name + "3_" + str(w)] = data / (idx.rolling(w).min() + 1e-12)
-        features[name + "4_" + str(w)] = data / (idx.rolling(w).median() + 1e-12)
+        features[name + "1_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).mean() + 1e-12)
+        features[name + "2_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).max() + 1e-12)
+        features[name + "3_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).min() + 1e-12)
+        features[name + "4_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).median() + 1e-12)
     return pd.concat([X, features], axis=1)
 
 
@@ -255,8 +258,8 @@ def RSV(X: pd.DataFrame, data: pd.Series, low_group: pd.core.groupby.SeriesGroup
     # Represent the price position between upper and lower resistant price for past d days.
     features = pd.DataFrame()
     for w in windows:
-        LOW = low_group.transform(lambda x: x.rolling(w).min())
-        HIGH = high_group.transform(lambda x: x.rolling(w).max())
+        LOW = low_group.transform(lambda x: x.rolling(w, min_periods=w - 1).min())
+        HIGH = high_group.transform(lambda x: x.rolling(w, min_periods=w - 1).max())
         features[name + str(w)] = (data - LOW) / (HIGH - LOW + 1e-12)
     return pd.concat([X, features], axis=1)
 
@@ -285,7 +288,7 @@ def VEGA(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: lis
     delta_ret = ret_group.diff()
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = delta_ret / ret_group.transform(lambda x: x.rolling(w).std())
+        features[name + str(w)] = delta_ret / ret_group.transform(lambda x: x.rolling(w, min_periods=w - 1).std())
     return pd.concat([X, features], axis=1)
 
 
@@ -294,7 +297,7 @@ def VAR(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: list
     # the VaR of return at prob 5%
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = ret_group.transform(lambda x: VaR(x.rolling(w)))
+        features[name + str(w)] = ret_group.transform(lambda x: VaR(x.rolling(w, min_periods=w - 1)))
     return pd.concat([X, features], axis=1)
 
 
@@ -446,10 +449,10 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
                     X = RSV(X, data[close], group_l, group_h, windows=windows)
 
                     # 在世坤的BRAIN挖到的因子
-                    vwap_mean = features["VWAP"].groupby(datetime).mean()
-                    rank_group = data["close"].groupby("datetime").rank(pct=True).groupby(groupby)
-                    X = CORR(X, rank_group, vwap_mean, windows=windows, name="CORR4_")
-                    del vwap_mean, rank_group
+                    # vwap_mean = features["VWAP"].groupby(datetime).mean()
+                    # rank_group = data["close"].groupby("datetime").rank(pct=True).groupby(groupby)
+                    # X = CORR(X, rank_group, vwap_mean, windows=windows, name="CORR3_")
+                    # del vwap_mean, rank_group
             X = pd.concat([X, features], axis=1)
             del features
 
@@ -477,16 +480,16 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
             X = SHIFT(X, mean, group_mean, windows=windows, name="MEAN2_")
             del mean, group_mean
         if close is not None:
-            data["vol_chg"] = group_v.pct_change()
+            data["vol_chg"] = group_v.pct_change().fillna(0)
             ts_vol = data["vol_chg"].groupby(datetime).mean()
             del data["vol_chg"]
-            X = CORR(X, group_v, ts_vol, windows=windows, name="CORR3_")
+            X = CORR(X, group_c, ts_vol, windows=windows, name="CORR3_")
             del ts_vol
     if amount is not None:
         X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
 
-    if fillna:
-        X = X.groupby(groupby).fillna(method="ffill").fillna(X.mean())
+    if fillna is True:
+        X = X.groupby(groupby).fillna(method="ffill").fillna(X[~X.isnull()].mean())
     end = time.time()
     print("time used:", end - start)
     return X
