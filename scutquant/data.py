@@ -1,6 +1,7 @@
 import akshare as ak
 import pandas as pd
 import datetime
+# from joblib import Parallel, delayed
 
 """
 akshare的数据并非100%准确！如果有更好的数据源请使用自己的数据
@@ -67,7 +68,7 @@ def get_daily_data(index_code, adjust=""):
 
     for stock in all_stocks["stock_code"].unique():
         start, end = all_stocks[all_stocks["stock_code"] == stock]["in_date"].unique(), \
-                     all_stocks[all_stocks["stock_code"] == stock]["out_date"].unique()
+            all_stocks[all_stocks["stock_code"] == stock]["out_date"].unique()
         # print(start, end)
         for i in range(len(start)):
             stock_data = ak.stock_zh_a_hist(symbol=stock, period="daily", start_date=start[i], end_date=end[i],
@@ -76,20 +77,71 @@ def get_daily_data(index_code, adjust=""):
             data = pd.concat([data, stock_data], axis=0)
     data = data.set_index(["日期", "code"]).sort_index()
     data.index.names = ["datetime", "code"]
-    df = df[~df.index.duplicated()]
+    data = data[~data.index.duplicated()]
     data.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pct_chg", "turnover"]
     return data
 
 
+"""
 def get_high_freq_data(index_code="000300", minutes=1, adjust="hfq"):
+    def get_minute_data(code, minute, adj):
+        stock_code = "sh" + code if code[0] == "6" else "sz" + code
+        stock_data = ak.stock_zh_a_minute(symbol=stock_code, period=str(minute), adjust=adj)
+        stock_data["code"] = stock_code
+        stock_data.set_index(["day", "code"], inplace=True)
+        return stock_data
+
     cons = ak.index_stock_cons(symbol=index_code)
+    df_list = Parallel(n_jobs=-1)(delayed(get_minute_data)(code, minutes, adjust) for code in cons["品种代码"])
+    df = pd.concat(df_list, axis=0)
+    df = df[~df.index.duplicated()]
+    return df
+"""
+
+
+def get_high_freq_data(index_code="000300", minutes=1, adjust="hfq"):
     df = pd.DataFrame()
+    cons = ak.index_stock_cons(symbol=index_code)
     for code in cons["品种代码"]:
         stock_code = "sh" + code if code[0] == "6" else "sz" + code
         stock_data = ak.stock_zh_a_minute(symbol=stock_code, period=str(minutes), adjust=adjust)
         stock_data["code"] = stock_code
         df = pd.concat([df, stock_data], axis=0)
     df = df.set_index(["day", "code"]).sort_index()
+    df.dropna(axis=1, how='all', inplace=True)
     df = df[~df.index.duplicated()]
     return df
-    
+
+
+"""
+# 并行计算会报错: no tables found
+def get_financial_data(index_code="000300", sleep=0.01):
+    def get_stock_data(code):
+        stock_data = ak.stock_financial_analysis_indicator(symbol=code)
+        stock_data["code"] = code + ".SH" if code[0] == "6" else code + ".SZ"
+        stock_data.set_index(["日期", "code"], inplace=True)
+        time.sleep(sleep)
+        return stock_data
+
+    cons = ak.index_stock_cons(symbol=index_code)
+    df_list = Parallel(n_jobs=-1)(delayed(get_stock_data)(code) for code in cons["品种代码"])
+    df = pd.concat(df_list, axis=0)
+    df.dropna(axis=1, how="all", inplace=True)
+    df.index.names = ["datetime", "code"]
+    df = df[~df.index.duplicated()]
+    return df
+"""
+
+
+def get_financial_data(index_code="000300"):
+    df = pd.DataFrame()
+    cons = ak.index_stock_cons(symbol=index_code)
+    for code in cons["品种代码"]:
+        stock_data = ak.stock_financial_analysis_indicator(symbol=code)
+        stock_data["code"] = code + ".SH" if code[0] == "6" else code + ".SZ"
+        df = pd.concat([df, stock_data], axis=0)
+    df = df.set_index(["日期", "code"]).sort_index()
+    df.dropna(axis=1, how="all", inplace=True)
+    df.index.names = ["datetime", "code"]
+    df = df[~df.index.duplicated()]
+    return df

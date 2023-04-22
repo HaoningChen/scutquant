@@ -375,3 +375,53 @@ def all_factors_ana(target_dir="", kwargs=None, auto_generate=True):
 
     # 总体IC的分层效应
     report.group_return_ana(prediction, label_test, groupby=prediction.index.names[0])
+
+
+def single_factor_ana(target_dir: str, kwargs: dict, auto_generate: bool = True):
+    """
+    The factor you want to analysis should be calculated before you call this function
+
+    :param target_dir:
+    :param kwargs:
+    :param auto_generate:
+    :return:
+    """
+
+    if kwargs is None:
+        with open(target_dir + "/single_factor_ana.yaml", 'r') as file:
+            kwargs = yaml.load(file, Loader=yaml.FullLoader)
+        file.close()
+
+    def init():
+        d_kwargs = kwargs["data"] if "data" in kwargs.keys() else None
+        p_kwargs = kwargs["process"] if "process" in kwargs.keys() else None
+        return d_kwargs, p_kwargs
+
+    data_kwargs, process_kwargs = init()
+
+    # load_data
+    data = load_data(target_dir, kwargs=data_kwargs, auto_generate=auto_generate)
+
+    # process_data(feature and label)
+    result = process_data(data, process_kwargs, auto_generate=auto_generate)
+    feature, label = result["X_train"], result["y_train"]
+    feature_test, label_test = result["X_test"], result["y_test"]
+
+    # ic
+    n_periods = len(feature.index.get_level_values(0).unique())
+    ic = calc_ic(feature, label)
+    f_name = feature.columns[0]
+    rank_ic = concat_data(feature, label).groupby(feature.index.names[0]).apply(
+        lambda x: x[f_name].corr(x["label"], method="spearman"))
+    ic_mean, ic_std = ic.mean(), ic.std()
+    icir = ic_mean / ic_std
+    t_stat = ic_mean / ic_std * (n_periods ** 0.5)
+    ic.to_pickle(target_dir + "/" + feature.columns[0] + "_ic.pkl")
+    factors_performance = pd.DataFrame(
+        {"ic_mean": [ic_mean], "icir": [icir], "rank_ic_mean": [rank_ic.mean()],
+         "rank_icir": [rank_ic.mean() / rank_ic.std()], "t-stat": [t_stat]}, index=feature.columns)
+    factors_performance.to_csv(target_dir + "/" + feature.columns[0] + "_performance.csv")
+
+    # group_return_ana
+    feature.columns.names = ["predict"]
+    report.group_return_ana(feature, label_test, groupby=feature_test.index.names[0])
