@@ -85,7 +85,7 @@ def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
     return psy
 
 
-def VaR(x: pd.Series, prob: int = 0.05) -> float:
+def VaR(x: pd.Series, prob: float = 0.05) -> float:
     """
     :param x: pd.Series
     :param prob: float
