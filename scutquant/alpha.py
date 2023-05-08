@@ -44,7 +44,6 @@ import pandas as pd
 import time
 from scipy.stats import norm
 from joblib import Parallel, delayed
-from sklearn.linear_model import LinearRegression
 
 
 def process_instrument(data: pd.DataFrame, feature: str, label: str, i, name: str):
@@ -650,12 +649,13 @@ def neutralize_data(data: pd.DataFrame, target: pd.Series, features=None) -> pd.
     index = data.index
     if features is None:
         features = data.columns
-    X = target.values.reshape(-1, 1)
 
     def process_col(column: str):
-        model = LinearRegression()
-        model.fit(X, data[column])
-        return pd.DataFrame(data[column].values - model.predict(X), columns=[column], index=index)
+        cov = data[column].cov(target)
+        var = target.var()
+        beta = cov / var
+        alpha = data[column].mean() - beta * target.mean()
+        return pd.DataFrame(data[column] - alpha - beta * target, columns=[column], index=index)
 
     results = Parallel(n_jobs=-1)(delayed(process_col)(col) for col in features)
     return pd.concat(results, axis=1)
