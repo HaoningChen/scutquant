@@ -1,6 +1,7 @@
 import akshare as ak
 import pandas as pd
 import datetime
+
 # from joblib import Parallel, delayed
 
 """
@@ -145,3 +146,42 @@ def get_financial_data(index_code="000300"):
     df.index.names = ["datetime", "code"]
     df = df[~df.index.duplicated()]
     return df
+
+
+def get_futures_news(instrument="AL"):
+    """
+    由于期货是T0, 而新闻的datetime无法具体到分钟，而且新闻具有发布时间离散, 发布时集中(指同一天有多条新闻)的特点, 因此很难直接整合进行情数据中
+
+    :param instrument: 品种代码, 由于akshare采用的方法是代码后面+888(表示指数合约), 因此只要输入合约代码的前两位即可
+    :return: pd.DataFrame, 包括作为索引的datetime, instrument, 作为正式内容的新闻标题(akshare不返回正文内容)和正文链接
+
+    注: 链接点开会404, 所以没什么用
+
+    instrument 示例:
+    AL: 沪铝
+    J9: 焦炭
+    TA: PTA
+    CJ: 红枣
+    JM: 焦煤
+    """
+    news = ak.futures_news_baidu(symbol=instrument)
+    news.columns = ["title", "datetime", "link"]
+    news["instrument"] = instrument
+    return news.set_index(["datetime", "instrument"]).sort_index()
+
+
+def get_high_freq_futures(instrument="PTA", freq=1):
+    """
+    :param instrument: 资产名称, 品种大类的中文名, 例如PTA, 白糖等
+    :param freq: int, 频率, 1为1分钟, 以此类推
+    :return: pd.DataFrame
+    """
+    all_contracts = ak.futures_zh_realtime(symbol=instrument)["symbol"].tolist()
+    all_data = pd.DataFrame()
+    for contract in all_contracts:
+        data = ak.futures_zh_minute_sina(symbol=contract, period=str(freq))
+        data["instrument"] = contract
+        all_data = pd.concat([all_data, data], axis=0)
+    all_data.dropna(axis=1, how="all", inplace=True)
+    all_data.set_index(["datetime", "instrument"], inplace=True)
+    return all_data.sort_index()

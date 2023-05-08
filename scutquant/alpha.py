@@ -43,6 +43,46 @@
 import pandas as pd
 import time
 from scipy.stats import norm
+from joblib import Parallel, delayed
+from sklearn.linear_model import LinearRegression
+
+
+def process_instrument(data: pd.DataFrame, feature: str, label: str, i, name: str):
+    """
+    对目标值与因子收益率回归得到因子暴露, 并将模型预测值作为因子
+    使用data_sample计算beta
+
+    :param data:
+    :param feature:
+    :param label:
+    :param i:
+    :param name: 因子名
+    :return: pd.DataFrame
+    """
+    data_i = data[data.index.get_level_values(1) == i]
+    data_sample = data_i if len(data_i) < 250 else data_i[-252: -2]
+    beta = data_sample[feature].cov(data_sample[label]) / data_sample[feature].var()
+    predict_i = beta * data_i[feature]
+    predict_i = pd.DataFrame(predict_i, index=data_i.index, columns=[name])
+    return predict_i
+
+
+def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label", name=None):
+    """
+    change factor return into factors
+    将因子暴露转换成因子, 使用并行计算
+    :param data: pd.DataFrame
+    :param feature: str, col name
+    :param label: str
+    :param name: list
+    :return: pd.DataFrame
+    """
+    if feature is None:
+        feature = data.columns[0]
+    instrument = data.index.get_level_values(1).unique()
+    factor_list = Parallel(n_jobs=-1)(delayed(process_instrument)(data, feature, label, i, name) for i in instrument)
+    factor = pd.concat(factor_list, axis=0)
+    return factor.sort_index()
 
 
 def cal_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
@@ -198,24 +238,42 @@ def QTL(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGrou
     return pd.concat([X, features], axis=1)
 
 
-def CORR(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
-         name: str = "CORR") -> pd.DataFrame:
-    # 受统计套利理论(股票配对交易)的启发，追踪个股收益率与大盘收益率的相关系数 这里的思路是: 如果近期(rolling=5, 10)的相关系数偏离了远期相关系数
-    # (rolling=30, 60), 则有可能是个股发生了异动, 可根据异动的方向选择个股与大盘的多空组合
+def CORR_ts(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
+            name: str = "CORR") -> pd.DataFrame:
+    # 面板数据与时序数据计算相关系数, 在计算例如个股收益率与大盘收益率的相关系数时比普通方法快
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = data1_group.transform(lambda x: x.rolling(w, min_periods=w - 1).corr(data2))
     return pd.concat([X, features], axis=1)
 
 
-def PairCorr(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.DataFrame, windows: list,
-             name: str = "CORR") -> pd.DataFrame:
-    # data1_group与data2中的各个对象计算相关系数. 例如volume在窗口为5, 10, 20时, 与对应窗口的波动率计算相关系数
+def calc_corr(data: pd.DataFrame, feature: str, label: str, i, name: str = "CORR", windows=None):
+    data_i = data[data.index.get_level_values(1) == i]
     features = pd.DataFrame()
-    for w_id in range(len(windows)):
-        features[name + str(windows[w_id])] = data1_group.transform(
-            lambda x: x.rolling(windows[w_id], min_periods=windows[w_id] - 1).corr(data2.iloc[:, w_id]))
-    return pd.concat([X, features], axis=1)
+    for w in windows:
+        features[name + str(w)] = data_i[feature].rolling(w).corr(data_i[label])
+    return features
+
+
+def CORR(X: pd.DataFrame, data: pd.DataFrame, feature: str, label: str, name: str = "CORR", windows=None):
+    """
+    example:
+    X = alpha.CORR(pd.DataFrame(), df, "close", "vol")
+
+    :param X:
+    :param data:
+    :param feature:
+    :param label:
+    :param name:
+    :param windows:
+    :return:
+    """
+    if windows is None:
+        windows = [5, 10, 20, 30, 60]
+    instrument = data.index.get_level_values(1).unique()
+    factor_list = Parallel(n_jobs=-1)(delayed(calc_corr)(data, feature, label, i, name, windows) for i in instrument)
+    factor = pd.concat(factor_list, axis=0).sort_index()
+    return pd.concat([X, factor], axis=1)
 
 
 def RSI(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
@@ -239,6 +297,7 @@ def PERF(X: pd.DataFrame, data: pd.Series, group_idx: pd.core.groupby.SeriesGrou
     features[name + "2"] = data / group_idx.std()
     features[name + "3"] = data / (group_idx.max() + 1e-12)
     features[name + "4"] = data / (group_idx.min() + 1e-12)
+    features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -250,6 +309,7 @@ def IDX(X: pd.DataFrame, data: pd.Series, idx: pd.Series, windows: list, name: s
         features[name + "2_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).max() + 1e-12)
         features[name + "3_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).min() + 1e-12)
         features[name + "4_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).median() + 1e-12)
+        features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -271,6 +331,7 @@ def DELTA(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, idx_return:
     # DELTA = partial P / partial S. Let P be R_it and S be R_m
     features = pd.DataFrame()
     features[name] = ret_group.diff() / (idx_return.diff() + 1e-12)
+    features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -279,6 +340,7 @@ def GAMMA(X: pd.DataFrame, idx_return: pd.Series, name: str = "GAMMA") -> pd.Dat
     # suppose delta DELTA  = gamma * delta S, which means gamma = delta DELTA / delta S
     features = pd.DataFrame()
     features[name] = X["DELTA"].groupby(X.index.names[1]).diff() / (idx_return.diff() + 1e-12)
+    features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -356,6 +418,8 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         kwargs["low"] = None
 
     data = kwargs["data"]
+
+    # fixme: 类型应为str | None
     open = kwargs["open"]
     close = kwargs["close"]
     volume = kwargs['volume']
@@ -384,7 +448,7 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         group_r = data["ret"].groupby(groupby)
         mean_ret = data["ret"].groupby(datetime).mean()
 
-        X = MACD(X, group_c, groupby=groupby)
+        # X = MACD(X, group_c, groupby=groupby)
         X = RET(X, data[close], group_c, groupby=datetime)
         X = SHIFT(X, data[close], group_c, windows=windows, name="CLOSE")
         X = ROC(X, data[close], group_c, windows=windows)
@@ -397,10 +461,10 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         X = QTL(X, data[close], group_c, windows=windows)
         # X = MA(X, data["ret"], group_r, windows=windows, name="MA2_")
         # X = STD(X, data["ret"], group_r, windows=windows, name="STD2_")
-        X = CORR(X, group_r, mean_ret, windows=windows)
+        X = CORR_ts(X, group_r, mean_ret, windows=windows)
 
         group_r_rank = X["RET2_1"].groupby(groupby)
-        X = CORR(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
+        X = CORR_ts(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
 
         # 来自行为金融学的指标
         X = RSI(X, group_c, windows=windows)
@@ -439,7 +503,7 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
                     features["KDJ_D"] = features["KDJ_K"].groupby(groupby).transform(lambda x: x.rolling(3).mean())
                     del l9, h9
                     features["KLEN"] = (data[high] - data[low]) / data[open]
-                    features["KIMD2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
+                    features["KMID2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
                     features["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-12)
                     features["KLOW"] = (data[close] - data[low]) / data[open]
                     features["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-12)
@@ -448,13 +512,11 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
                     features["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
                     X = RSV(X, data[close], group_l, group_h, windows=windows)
 
-                    # 在世坤的BRAIN挖到的因子
-                    vwap_mean = features["VWAP"].groupby(datetime).mean()
-                    data["rank"] = data["ret"].groupby("datetime").rank(pct=True)
-                    group_r_rank = data["rank"].groupby(groupby)
-                    X = CORR(X, group_r_rank, vwap_mean, windows=windows, name="CORR3_")
-                    del vwap_mean, group_r_rank, data["rank"]
             X = pd.concat([X, features], axis=1)
+            # 在世坤的BRAIN挖到的因子
+            X["rank"] = -1 / (data["ret"].groupby("datetime").rank(pct=True) + 1e-10)
+            # X = CORR(X, data=X, feature="VWAP", label="rank", windows=windows, name="CORR3_")
+            # del X["rank"]
             del features
 
     if open is not None:
@@ -480,14 +542,9 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
             X["MEAN2"] = mean / mean.groupby(datetime).mean()
             X = SHIFT(X, mean, group_mean, windows=windows, name="MEAN2_")
             del mean, group_mean
-        """
-        if close is not None:
-            data["vol_chg"] = group_v.pct_change().fillna(0)
-            ts_vol = data["vol_chg"].groupby(datetime).mean()
-            del data["vol_chg"]
-            X = CORR(X, group_c, ts_vol, windows=windows, name="CORR4_")
-            del ts_vol
-        """
+
+        # if close is not None:
+        # X = CORR(X, data, feature=close, label=volume, name="CORR4_")
 
     if amount is not None:
         X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
@@ -561,3 +618,25 @@ def alpha360(kwargs: dict, shift: int = 60, fillna: bool = False) -> pd.DataFram
     end = time.time()
     print("time used:", end - start)
     return X
+
+
+def neutralize_data(data: pd.DataFrame, target: pd.Series, features=None) -> pd.DataFrame:
+    """
+    对因子中性化(回归取残差)
+    :param data: 待中性化的因子库
+    :param target: 解释变量(例如需要做市场中性化, 则用市值作为target)
+    :param features: list or None, 需要中性化的因子(列表), 若填None则使用所有列进行中性化
+    :return: pd.DataFrame
+    """
+    index = data.index
+    if features is None:
+        features = data.columns
+    X = target.values.reshape(-1, 1)
+
+    def process_col(column: str):
+        model = LinearRegression()
+        model.fit(X, data[column])
+        return pd.DataFrame(data[column].values - model.predict(X), columns=[column], index=index)
+
+    results = Parallel(n_jobs=-1)(delayed(process_col)(col) for col in features)
+    return pd.concat(results, axis=1)
