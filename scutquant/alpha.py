@@ -655,9 +655,8 @@ def neutralize_data(data: pd.DataFrame, target: pd.Series, features=None) -> pd.
         cov = data[column].cov(target)
         var = target.var()
         beta = cov / var
-        alpha = data[column].mean() - beta * target.mean()
-        return pd.DataFrame(data[column] - alpha - beta * target, columns=[column], index=index)
-        # return pd.DataFrame(data[column] - beta * target, columns=[column], index=index)
+        beta0 = data[column].mean() - beta * target.mean()
+        return pd.DataFrame(data[column] - beta0 - beta * target, columns=[column], index=index)
 
     results = pd.DataFrame()
     for col in features:
