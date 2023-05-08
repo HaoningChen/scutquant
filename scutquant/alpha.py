@@ -629,11 +629,12 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features=None, groupby=Non
     :param groupby: None 或者 str, 分组依据
     :return:
     """
+
     if groupby is not None:
         target_name = target.name
-        target = target[target.index.isin(data.index)]
-        data = pd.concat([data, target], axis=1)
-        return data.groupby(groupby, group_keys=False).apply(lambda x: neutralize_data(x, x[target_name], features))
+        data = pd.concat([data, target], axis=1) if target_name not in data.columns else data
+        return data.groupby(groupby, group_keys=False).apply(
+            lambda x: neutralize_data(x, x[target_name], features)).drop(target_name, axis=1)
     else:
         return neutralize_data(data, target, features)
 
@@ -656,6 +657,9 @@ def neutralize_data(data: pd.DataFrame, target: pd.Series, features=None) -> pd.
         beta = cov / var
         alpha = data[column].mean() - beta * target.mean()
         return pd.DataFrame(data[column] - alpha - beta * target, columns=[column], index=index)
+        # return pd.DataFrame(data[column] - beta * target, columns=[column], index=index)
 
-    results = Parallel(n_jobs=-1)(delayed(process_col)(col) for col in features)
-    return pd.concat(results, axis=1)
+    results = pd.DataFrame()
+    for col in features:
+        results[col] = process_col(col)
+    return results
