@@ -620,6 +620,25 @@ def alpha360(kwargs: dict, shift: int = 60, fillna: bool = False) -> pd.DataFram
     return X
 
 
+def neutralize(data: pd.DataFrame, target: pd.Series, features=None, groupby=None):
+    """
+    可以分组进行中性化, 也可以对所有样本中性化
+
+    :param data: 需要中性化的因子库
+    :param target: 解释变量
+    :param features: 需要中性化的因子名(列表)
+    :param groupby: None 或者 str, 分组依据
+    :return:
+    """
+    if groupby is not None:
+        target_name = target.name
+        target = target[target.index.isin(data.index)]
+        data = pd.concat([data, target], axis=1)
+        return data.groupby(groupby, group_keys=False).apply(lambda x: neutralize_data(x, x[target_name], features))
+    else:
+        return neutralize_data(data, target, features)
+
+
 def neutralize_data(data: pd.DataFrame, target: pd.Series, features=None) -> pd.DataFrame:
     """
     对因子中性化(回归取残差)
