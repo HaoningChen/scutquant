@@ -619,46 +619,37 @@ def alpha360(kwargs: dict, shift: int = 60, fillna: bool = False) -> pd.DataFram
     return X
 
 
-def neutralize(data: pd.DataFrame, target: pd.Series, features=None, groupby=None):
-    """
-    可以分组进行中性化, 也可以对所有样本中性化
+def get_resid(x: pd.Series, y: pd.Series):
+    cov = x.cov(y)
+    var = x.var()
+    beta = cov / var
+    beta0 = y.mean() - beta * x.mean()
+    return y - beta0 - beta * x
 
-    :param data: 需要中性化的因子库
+
+def neutralize(data: pd.DataFrame, target: pd.Series, features=None):
+    """
+    在截面上对选定的features进行target中性化, 剩余因子不变
+
+    :param data: 需要中性化的因子集合
     :param target: 解释变量
     :param features: 需要中性化的因子名(列表)
-    :param groupby: None 或者 str, 分组依据
     :return:
     """
+    target = target[target.index.isin(data.index)]
+    concat_data = pd.concat([data, target], axis=1)
+    target_name = target.name
+    features = data.columns if features is None else features
+    other_cols = [c for c in data.columns if c not in features]
+    data = data[other_cols]
+    del other_cols
 
-    if groupby is not None:
-        target_name = target.name
-        data = pd.concat([data, target], axis=1) if target_name not in data.columns else data
-        return data.groupby(groupby, group_keys=False).apply(
-            lambda x: neutralize_data(x, x[target_name], features)).drop(target_name, axis=1)
-    else:
-        return neutralize_data(data, target, features)
+    def neutralize_single_factor(f_name):
+        result = concat_data[[f_name, target_name]].groupby(level=0, group_keys=False).apply(
+            lambda x: get_resid(x[target_name], x[f_name]))
+        result.name = f_name
+        return result
 
-
-def neutralize_data(data: pd.DataFrame, target: pd.Series, features=None) -> pd.DataFrame:
-    """
-    对因子中性化(回归取残差)
-    :param data: 待中性化的因子库
-    :param target: 解释变量(例如需要做市场中性化, 则用市值作为target)
-    :param features: list or None, 需要中性化的因子(列表), 若填None则使用所有列进行中性化
-    :return: pd.DataFrame
-    """
-    index = data.index
-    if features is None:
-        features = data.columns
-
-    def process_col(column: str):
-        cov = data[column].cov(target)
-        var = target.var()
-        beta = cov / var
-        beta0 = data[column].mean() - beta * target.mean()
-        return pd.DataFrame(data[column] - beta0 - beta * target, columns=[column], index=index)
-
-    results = pd.DataFrame()
-    for col in features:
-        results[col] = process_col(col)
-    return results
+    factor_neu = Parallel(n_jobs=-1)(delayed(neutralize_single_factor)(f) for f in features)
+    data_neu = pd.concat(factor_neu, axis=1)
+    return pd.concat([data_neu, data], axis=1)
