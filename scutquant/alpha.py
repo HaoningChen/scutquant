@@ -623,18 +623,19 @@ def get_resid(x: pd.Series, y: pd.Series):
     cov = x.cov(y)
     var = x.var()
     beta = cov / var
+    del cov, var
     beta0 = y.mean() - beta * x.mean()
     return y - beta0 - beta * x
 
 
-def neutralize(data: pd.DataFrame, target: pd.Series, features=None):
+def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None) -> pd.DataFrame:
     """
     在截面上对选定的features进行target中性化, 剩余因子不变
 
     :param data: 需要中性化的因子集合
     :param target: 解释变量
-    :param features: 需要中性化的因子名(列表)
-    :return:
+    :param features: 需要中性化的因子名(列表), 因为不同因子可能需要不同的中性化手法, 故通过此参数控制进行中性化的因子
+    :return: pd.DataFrame, 包括中性化后的因子和未中性化的其它因子
     """
     target = target[target.index.isin(data.index)]
     concat_data = pd.concat([data, target], axis=1)
@@ -644,7 +645,7 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features=None):
     data = data[other_cols]
     del other_cols
 
-    def neutralize_single_factor(f_name):
+    def neutralize_single_factor(f_name: str) -> pd.Series:
         result = concat_data[[f_name, target_name]].groupby(level=0, group_keys=False).apply(
             lambda x: get_resid(x[target_name], x[f_name]))
         result.name = f_name
@@ -652,4 +653,5 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features=None):
 
     factor_neu = Parallel(n_jobs=-1)(delayed(neutralize_single_factor)(f) for f in features)
     data_neu = pd.concat(factor_neu, axis=1)
+    del factor_neu
     return pd.concat([data_neu, data], axis=1)
