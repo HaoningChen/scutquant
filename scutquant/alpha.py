@@ -651,8 +651,7 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None) -> 
     target_name = target.name
     features = data.columns if features is None else features
     other_cols = [c for c in data.columns if c not in features]
-    data = data[other_cols]
-    del other_cols
+    del data, target
 
     def neutralize_single_factor(f_name: str) -> pd.Series:
         result = concat_data[[f_name, target_name]].groupby(level=0, group_keys=False).apply(
@@ -663,4 +662,4 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None) -> 
     factor_neu = Parallel(n_jobs=-1)(delayed(neutralize_single_factor)(f) for f in features)
     data_neu = pd.concat(factor_neu, axis=1)
     del factor_neu
-    return pd.concat([data_neu, data], axis=1)
+    return pd.concat([data_neu, concat_data[other_cols]], axis=1)
