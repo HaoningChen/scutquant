@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 random.seed(2046)
 
 
-def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None):
+def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None, index: list = None):
     """
     将序列数据(例如宏观的利率数据)按时间整合到面板数据中(例如沪深300成分)
     example:
@@ -29,11 +29,14 @@ def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime',
     :param data_join: pd.Series or pd.DataFrame, 要合并的序列数据
     :param on: str, 表示时间(或者其它)的列(两个数据集同时拥有)
     :param col: list, 被合并数据的列名(必须在data_join中存在)
+    :param index: list, 合并后数据的index
     """
     if col is None:
         col = data_join.columns
-    result = pd.merge(data, data_join[col], on=on, how="left")
-    return result
+    if index is None:
+        index = data.index
+    result = pd.merge(data.reset_index(), data_join[col].reset_index(), on=on, how="left")
+    return result.set_index(index)
 
 
 ####################################################
