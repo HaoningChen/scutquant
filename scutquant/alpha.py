@@ -46,42 +46,26 @@ from scipy.stats import norm
 from joblib import Parallel, delayed
 
 
-def process_instrument(data: pd.DataFrame, feature: str, label: str, i, name: str):
-    """
-    对目标值与因子收益率回归得到因子暴露, 并将模型预测值作为因子
-    使用data_sample计算beta
-
-    :param data:
-    :param feature:
-    :param label:
-    :param i:
-    :param name: 因子名
-    :return: pd.DataFrame
-    """
-    data_i = data[data.index.get_level_values(1) == i]
-    data_sample = data_i if len(data_i) < 250 else data_i[-252: -2]
-    beta = data_sample[feature].cov(data_sample[label]) / data_sample[feature].var()
-    predict_i = beta * data_i[feature]
-    predict_i = pd.DataFrame(predict_i, index=data_i.index, columns=[name])
-    return predict_i
+def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str):
+    data_sampled = concat_data if len(concat_data) < 250 else concat_data[-252: -2]
+    cov = data_sampled[feature].cov(data_sampled[label])
+    var = data_sampled[label].var()
+    beta = cov / var
+    return beta * concat_data[feature]
 
 
 def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label", name=None):
     """
     change factor return into factors
-    将因子暴露转换成因子, 使用并行计算
+    将因子收益转换成因子
     :param data: pd.DataFrame
     :param feature: str, col name
     :param label: str
     :param name: list
     :return: pd.DataFrame
+
     """
-    if feature is None:
-        feature = data.columns[0]
-    instrument = data.index.get_level_values(1).unique()
-    factor_list = Parallel(n_jobs=-1)(delayed(process_instrument)(data, feature, label, i, name) for i in instrument)
-    factor = pd.concat(factor_list, axis=0)
-    return factor.sort_index()
+    return data.groupby(level=1, group_keys=False).apply(lambda x: get_factor_loadings(x, feature, label))
 
 
 def cal_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
@@ -292,10 +276,10 @@ def PSY(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: lis
 def PERF(X: pd.DataFrame, data: pd.Series, group_idx: pd.core.groupby.SeriesGroupBy, name="PERF") -> pd.DataFrame:
     # performance: 股票当日收益率相对大盘的表现
     features = pd.DataFrame()
-    features[name + "1"] = data / (group_idx.mean() + 1e-12)
+    features[name + "1"] = data / (group_idx.mean() + 1e-10)
     features[name + "2"] = data / group_idx.std()
-    features[name + "3"] = data / (group_idx.max() + 1e-12)
-    features[name + "4"] = data / (group_idx.min() + 1e-12)
+    features[name + "3"] = data / (group_idx.max() + 1e-10)
+    features[name + "4"] = data / (group_idx.min() + 1e-10)
     features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
@@ -304,11 +288,13 @@ def IDX(X: pd.DataFrame, data: pd.Series, idx: pd.Series, windows: list, name: s
     # 收盘价相对开盘价的变化, 与大盘的移动平均线对比
     features = pd.DataFrame()
     for w in windows:
-        features[name + "1_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).mean() + 1e-12)
-        features[name + "2_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).max() + 1e-12)
-        features[name + "3_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).min() + 1e-12)
-        features[name + "4_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).median() + 1e-12)
-        features = features.groupby(level=0).rank(pct=True)
+        features[name + "1_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).mean() + 1e-10)
+        features[name + "2_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).max() + 1e-10)
+        features[name + "3_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).min() + 1e-10)
+        features[name + "4_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).median() + 1e-10)
+        Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
+        features -= Min
+        features /= Max - Min
     return pd.concat([X, features], axis=1)
 
 
@@ -319,7 +305,7 @@ def RSV(X: pd.DataFrame, data: pd.Series, low_group: pd.core.groupby.SeriesGroup
     for w in windows:
         LOW = low_group.transform(lambda x: x.rolling(w, min_periods=w - 1).min())
         HIGH = high_group.transform(lambda x: x.rolling(w, min_periods=w - 1).max())
-        features[name + str(w)] = (data - LOW) / (HIGH - LOW + 1e-12)
+        features[name + str(w)] = (data - LOW) / (HIGH - LOW + 1e-10)
     return pd.concat([X, features], axis=1)
 
 
@@ -329,8 +315,10 @@ def DELTA(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, idx_return:
     # The delta of option greeks
     # DELTA = partial P / partial S. Let P be R_it and S be R_m
     features = pd.DataFrame()
-    features[name] = ret_group.diff() / (idx_return.diff() + 1e-12)
-    features = features.groupby(level=0).rank(pct=True)
+    features[name] = ret_group.diff() / (idx_return.diff() + 1e-10)
+    Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
+    features -= Min
+    features /= Max - Min
     return pd.concat([X, features], axis=1)
 
 
@@ -338,8 +326,10 @@ def GAMMA(X: pd.DataFrame, idx_return: pd.Series, name: str = "GAMMA") -> pd.Dat
     # The gamma of greek value, which equals partial DELTA / partial S
     # suppose delta DELTA  = gamma * delta S, which means gamma = delta DELTA / delta S
     features = pd.DataFrame()
-    features[name] = X["DELTA"].groupby(X.index.names[1]).diff() / (idx_return.diff() + 1e-12)
-    features = features.groupby(level=0).rank(pct=True)
+    features[name] = X["DELTA"].groupby(X.index.names[1]).diff() / (idx_return.diff() + 1e-10)
+    Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
+    features -= Min
+    features /= Max - Min
     return pd.concat([X, features], axis=1)
 
 
@@ -502,12 +492,12 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
                     features["KDJ_D"] = features["KDJ_K"].groupby(groupby).transform(lambda x: x.rolling(3).mean())
                     del l9, h9
                     features["KLEN"] = (data[high] - data[low]) / data[open]
-                    features["KMID2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-12)
-                    features["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-12)
+                    features["KMID2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-10)
+                    features["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-10)
                     features["KLOW"] = (data[close] - data[low]) / data[open]
-                    features["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-12)
+                    features["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-10)
                     features["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
-                    features["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-12)
+                    features["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-10)
                     features["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
                     X = RSV(X, data[close], group_l, group_h, windows=windows)
 
@@ -613,15 +603,15 @@ def alpha360(kwargs: dict, shift: int = 60, fillna: bool = False) -> pd.DataFram
         X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
 
     if fillna:
-        X = X.groupby(groupby).fillna(method="ffill").fillna(X.mean())
+        X = X.groupby(groupby).fillna(method="ffill").fillna(X[~X.isnull()].mean())
     end = time.time()
     print("time used:", end - start)
     return X
 
 
-def get_resid(x: pd.Series, y: pd.Series):
+def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
     """
-    经过100万级的数据的上百次实验, 证明此方法比调用sklearn.linear_model的LinearRegression平均快2/5
+    经过100万级的数据的上百次实验, 证明此方法比调用sklearn.linear_model的LinearRegression平均快一倍
     """
     cov = x.cov(y)
     var = x.var()
@@ -631,7 +621,7 @@ def get_resid(x: pd.Series, y: pd.Series):
     return y - beta0 - beta * x
 
 
-def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None) -> pd.DataFrame:
+def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None, n_jobs=-1) -> pd.DataFrame:
     """
     在截面上对选定的features进行target中性化, 剩余因子不变
 
@@ -644,6 +634,7 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None) -> 
     :param data: 需要中性化的因子集合
     :param target: 解释变量
     :param features: 需要中性化的因子名(列表), 因为不同因子可能需要不同的中性化手法, 故通过此参数控制进行中性化的因子
+    :param n_jobs: 同时调用的cpu数
     :return: pd.DataFrame, 包括中性化后的因子和未中性化的其它因子
     """
     target = target[target.index.isin(data.index)]
@@ -659,7 +650,7 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None) -> 
         result.name = f_name
         return result
 
-    factor_neu = Parallel(n_jobs=-1)(delayed(neutralize_single_factor)(f) for f in features)
+    factor_neu = Parallel(n_jobs=n_jobs)(delayed(neutralize_single_factor)(f) for f in features)
     data_neu = pd.concat(factor_neu, axis=1)
     del factor_neu
     return pd.concat([data_neu, concat_data[other_cols]], axis=1)
