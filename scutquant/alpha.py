@@ -47,21 +47,23 @@ from joblib import Parallel, delayed
 
 
 def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str):
+    """
+    考虑最简单的单指数模型: R = β * Rm + α, 其中α应为0, β = cov(R, Rm) / var(Rm)
+    """
     data_sampled = concat_data if len(concat_data) < 250 else concat_data[-252: -2]
     cov = data_sampled[feature].cov(data_sampled[label])
-    var = data_sampled[label].var()
+    var = data_sampled[feature].var()
     beta = cov / var
     return beta * concat_data[feature]
 
 
-def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label", name=None):
+def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label"):
     """
     change factor return into factors
     将因子收益转换成因子
     :param data: pd.DataFrame
     :param feature: str, col name
     :param label: str
-    :param name: list
     :return: pd.DataFrame
 
     """
