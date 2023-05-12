@@ -16,28 +16,24 @@ warnings.filterwarnings("ignore")
 random.seed(2046)
 
 
-def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None,
-              index: list = None):
+def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None):
     """
     将序列数据(例如宏观的利率数据)按时间整合到面板数据中(例如沪深300成分)
     example:
 
-    df_train = scutquant.join_data(df_train, series_train, col=['index_return', 'rf'], index=['datetime', instrument'])
-    df_test = scutquant.join_data(df_test, series_test, col=['index_return', 'rf'], index=['datetime', 'instrument'])
+    df_train = scutquant.join_data(df_train, series_train, col=['index_return', 'rf'])
+    df_test = scutquant.join_data(df_test, series_test, col=['index_return', 'rf'])
     df = pd.concat([df_train, df_test], axis=0)
 
-    :param data: pd.Series or pd.DataFrame without index, 股票数据(面板数据)
-    :param data_join: pd.Series or pd.DataFrame without index, 要合并的序列数据
+    :param data: pd.Series or pd.DataFrame, 股票数据(面板数据)
+    :param data_join: pd.Series or pd.DataFrame, 要合并的序列数据
     :param on: str, 表示时间(或者其它)的列(两个数据集同时拥有)
     :param col: list, 被合并数据的列名(必须在data_join中存在)
-    :param index: list, 面板数据的索引
     """
     if col is None:
         col = data_join.columns
-    if index is None:
-        index = ["datetime", "instrument"]
     result = pd.merge(data, data_join[col], on=on, how="left")
-    return result.set_index(index)
+    return result
 
 
 ####################################################
