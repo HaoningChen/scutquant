@@ -16,7 +16,8 @@ warnings.filterwarnings("ignore")
 random.seed(2046)
 
 
-def join_data(data, data_join, time='datetime', col=None, index=None):
+def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None,
+              index: list = None):
     """
     将序列数据(例如宏观的利率数据)按时间整合到面板数据中(例如沪深300成分)
     example:
@@ -25,66 +26,18 @@ def join_data(data, data_join, time='datetime', col=None, index=None):
     df_test = scutquant.join_data(df_test, series_test, col=['index_return', 'rf'], index=['datetime', 'instrument'])
     df = pd.concat([df_train, df_test], axis=0)
 
-    :param data: pd.Series or pd.DataFrame, 股票数据(面板数据)
-    :param data_join: pd.Series or pd.DataFrame, 要合并的序列数据
-    :param time: str, 表示时间的列(两个数据集同时拥有)
+    :param data: pd.Series or pd.DataFrame without index, 股票数据(面板数据)
+    :param data_join: pd.Series or pd.DataFrame without index, 要合并的序列数据
+    :param on: str, 表示时间(或者其它)的列(两个数据集同时拥有)
     :param col: list, 被合并数据的列名(必须在data_join中存在)
     :param index: list, 面板数据的索引
     """
+    if col is None:
+        col = data_join.columns
     if index is None:
-        index = ['datetime', 'instrument']
-    data = data.reset_index()
-    data_join = data_join.reset_index()
-    T = data[time].unique()
-
-    asset_list = []
-    for t in T:
-        data_chosen = data[data[time] == t]  # 找出每天资产池中资产的数量
-        asset_list.append(len(data_chosen))
-
-    if col is not None:
-        for c in col:
-            idx = 0
-            d_list = []
-            for a in asset_list:
-                data_join_chosen = data_join[c][idx]
-                # print(data_join_chosen)
-                for asset in range(a):
-                    d_list.append(data_join_chosen)
-                idx += 1
-            data[c] = d_list
-    data.set_index(index, inplace=True)
-    if 'index' in data.columns:
-        data = data.drop('index', axis=1)
-    return data
-
-
-def join_data_by_code(data, data_join, code='instrument', col=None, index=None):
-    """
-    场景：CAPM中每支股票对应一个beta和一个alpha（n*3的序列，包括股票代码、beta和alpha）, 将它们整合到股票的面板数据中（至少包括time, 股票代码）
-
-    :param data: pd.DataFrame or pd.Series, 面板数据
-    :param data_join: pd.DataFrame or pd.Series
-    :param code: str, 表示股票代码的列
-    :param col: list, data_join中待合并的列名
-    :param index: list, 合并后设置的索引
-    :return: pd.DataFrame
-    """
-    if index is None:
-        index = ['datetime', 'instrument']
-    data = data.reset_index()
-    data_join = data_join.reset_index()
-    for c in col:
-        data[c] = 0
-    for i in data[code].unique():
-        ind = data[data[code] == i].index
-        for c in range(len(col)):
-            data_ = data_join[data_join[code] == i][col[c]].values[0]
-            data.loc[ind, col[c]] = data_
-    data.set_index(index, inplace=True)
-    if 'index' in data.columns:
-        data = data.drop('index', axis=1)
-    return data
+        index = ["datetime", "instrument"]
+    result = pd.merge(data, data_join[col], on=on, how="left")
+    return result.set_index(index)
 
 
 ####################################################
