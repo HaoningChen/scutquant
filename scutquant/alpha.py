@@ -232,21 +232,19 @@ def CORR_ts(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: 
     return pd.concat([X, features], axis=1)
 
 
-def calc_corr(data: pd.DataFrame, feature: str, label: str, i, name: str = "CORR", windows=None):
-    data_i = data[data.index.get_level_values(1) == i]
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_i[feature].rolling(w).corr(data_i[label])
-    return features
+def calc_corr(data: pd.DataFrame, feature: str, label: str, window=None):
+    corr = data[feature].rolling(window).corr(data[label])
+    return corr
 
 
-def CORR(X: pd.DataFrame, data: pd.DataFrame, feature: str, label: str, name: str = "CORR", windows=None):
+def CORR(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, feature: str, label: str, name: str = "CORR",
+         windows=None):
     """
     example:
     X = alpha.CORR(pd.DataFrame(), df, "close", "vol")
 
     :param X:
-    :param data:
+    :param data_group:
     :param feature:
     :param label:
     :param name:
@@ -255,10 +253,10 @@ def CORR(X: pd.DataFrame, data: pd.DataFrame, feature: str, label: str, name: st
     """
     if windows is None:
         windows = [5, 10, 20, 30, 60]
-    instrument = data.index.get_level_values(1).unique()
-    factor_list = Parallel(n_jobs=-1)(delayed(calc_corr)(data, feature, label, i, name, windows) for i in instrument)
-    factor = pd.concat(factor_list, axis=0).sort_index()
-    return pd.concat([X, factor], axis=1)
+    features = pd.DataFrame()
+    for w in windows:
+        features[name + str(w)] = data_group.apply(lambda x: calc_corr(x, feature, label, window=w))
+    return pd.concat([X, features], axis=1)
 
 
 def RSI(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
