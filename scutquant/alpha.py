@@ -292,9 +292,7 @@ def IDX(X: pd.DataFrame, data: pd.Series, idx: pd.Series, windows: list, name: s
         features[name + "2_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).max() + 1e-10)
         features[name + "3_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).min() + 1e-10)
         features[name + "4_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).median() + 1e-10)
-        Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
-        features -= Min
-        features /= Max - Min
+    features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -316,9 +314,10 @@ def DELTA(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, idx_return:
     # DELTA = partial P / partial S. Let P be R_it and S be R_m
     features = pd.DataFrame()
     features[name] = ret_group.diff() / (idx_return.diff() + 1e-10)
-    Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
-    features -= Min
-    features /= Max - Min
+    # Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
+    # features -= Min
+    # features /= Max - Min
+    features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -327,9 +326,10 @@ def GAMMA(X: pd.DataFrame, idx_return: pd.Series, name: str = "GAMMA") -> pd.Dat
     # suppose delta DELTA  = gamma * delta S, which means gamma = delta DELTA / delta S
     features = pd.DataFrame()
     features[name] = X["DELTA"].groupby(X.index.names[1]).diff() / (idx_return.diff() + 1e-10)
-    Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
-    features -= Min
-    features /= Max - Min
+    # Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
+    # features -= Min
+    # features /= Max - Min
+    features = features.groupby(level=0).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -349,6 +349,18 @@ def VAR(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: list
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = ret_group.transform(lambda x: VaR(x.rolling(w, min_periods=w - 1)))
+    return pd.concat([X, features], axis=1)
+
+
+def SHARPE(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "SHARPE", rank=True) \
+        -> pd.DataFrame:
+    features = pd.DataFrame()
+    for w in windows:
+        mean = ret_group.transform(lambda x: x.rolling(w).mean())
+        std = ret_group.transform(lambda x: x.rolling(w).std())
+        features[name + str(w)] = mean / (std + 1e-10)
+    if rank:
+        features = features.groupby(level=0, group_keys=False).rank(pct=True)
     return pd.concat([X, features], axis=1)
 
 
@@ -439,6 +451,7 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
 
         # X = MACD(X, group_c, groupby=groupby)
         X = RET(X, data[close], group_c, groupby=datetime)
+        X = SHARPE(X, group_r, windows=windows)
         X = SHIFT(X, data[close], group_c, windows=windows, name="CLOSE")
         X = ROC(X, data[close], group_c, windows=windows)
         X = BETA(X, data[close], group_c, windows=windows)
