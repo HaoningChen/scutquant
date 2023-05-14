@@ -70,19 +70,19 @@ def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label"
     return data.groupby(level=1, group_keys=False).apply(lambda x: get_factor_loadings(x, feature, label)).sort_index()
 
 
-def cal_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
+def calc_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
     ema_n = prices.ewm(span=n, min_periods=n - 1).mean()
     ema_m = prices.ewm(span=m, min_periods=m - 1).mean()
     dif = ema_n - ema_m
     return dif
 
 
-def cal_dea(dif: pd.Series, k: int = 9) -> pd.Series:
+def calc_dea(dif: pd.Series, k: int = 9) -> pd.Series:
     dea = dif.ewm(span=k, min_periods=k - 1).mean()
     return dea
 
 
-def cal_rsi(price: pd.Series, windows: int = 14) -> pd.Series:
+def calc_rsi(price: pd.Series, windows: int = 14) -> pd.Series:
     # 计算每日涨跌情况
     diff = price.diff()
     up = diff.copy()
@@ -99,7 +99,7 @@ def cal_rsi(price: pd.Series, windows: int = 14) -> pd.Series:
     return rsi
 
 
-def cal_psy(price: pd.Series, windows: int = 10) -> pd.Series:
+def calc_psy(price: pd.Series, windows: int = 10) -> pd.Series:
     # 计算每日涨跌情况
     diff = price.diff()
     diff[diff > 0] = 1
@@ -127,8 +127,8 @@ def MACD(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, groupby: st
     if name is None:
         name = ["DIF", "DEA"]
     features = pd.DataFrame()
-    features[name[0]] = data_group.transform(lambda x: cal_dif(x))
-    features[name[1]] = features[name[0]].groupby(groupby).transform(lambda x: cal_dea(x))
+    features[name[0]] = data_group.transform(lambda x: calc_dif(x))
+    features[name[1]] = features[name[0]].groupby(groupby).transform(lambda x: calc_dea(x))
     return pd.concat([X, features], axis=1)
 
 
@@ -264,14 +264,14 @@ def CORR(X: pd.DataFrame, data: pd.DataFrame, feature: str, label: str, name: st
 def RSI(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: cal_rsi(x, w))
+        features[name + str(w)] = data_group.transform(lambda x: calc_rsi(x, w))
     return pd.concat([X, features], axis=1)
 
 
 def PSY(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "PSY") -> pd.DataFrame:
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: cal_psy(x, w))
+        features[name + str(w)] = data_group.transform(lambda x: calc_psy(x, w))
     return pd.concat([X, features], axis=1)
 
 
