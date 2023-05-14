@@ -49,10 +49,10 @@ from joblib import Parallel, delayed
 def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str):
     """
     考虑最简单的单指数模型: R = β * Rm + α, 其中α应为0, β = cov(R, Rm) / var(Rm)
+    使用rolling方法避免在回测中出现数据泄露(实盘不会出现这个问题)
     """
-    data_sampled = concat_data if len(concat_data) < 250 else concat_data[-252: -2]
-    cov = data_sampled[feature].cov(data_sampled[label])
-    var = data_sampled[feature].var()
+    cov = concat_data[feature].rolling(60, min_periods=30).cov(concat_data[label])
+    var = concat_data[feature].rolling(60, min_periods=30).var()
     beta = cov / var
     return beta * concat_data[feature]
 
@@ -67,7 +67,7 @@ def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label"
     :return: pd.DataFrame
 
     """
-    return data.groupby(level=1, group_keys=False).apply(lambda x: get_factor_loadings(x, feature, label))
+    return data.groupby(level=1, group_keys=False).apply(lambda x: get_factor_loadings(x, feature, label)).sort_index()
 
 
 def cal_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
