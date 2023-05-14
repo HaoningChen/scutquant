@@ -256,7 +256,7 @@ def CORR(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, feature: str, lab
     features = pd.DataFrame()
     for w in windows:
         features[name + str(w)] = data_group.apply(lambda x: calc_corr(x, feature, label, window=w))
-    return pd.concat([X, features], axis=1)
+    return pd.concat([X, features.sort_index()], axis=1)
 
 
 def RSI(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
