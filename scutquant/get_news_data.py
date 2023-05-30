@@ -52,12 +52,16 @@ def get_total_pages(sample_url, encoding="utf-8", select='div.swiper-container >
     """
     response = requests.get(sample_url)
     if response.status_code != 200:
+        # print("error occurs")
         return []
     else:
         response.encoding = encoding
         soup = BeautifulSoup(response.text, "html.parser")
         news_list = soup.select(select)
-        return [news[href] for news in news_list]
+        total_pages = [news[href] for news in news_list]
+        # total_pages = total_pages.append(sample_url) if sample_url not in total_pages else total_pages
+        # print(total_pages)
+        return total_pages
 
 
 def get_title(url, encoding="utf-8", select="div.news > ul > li > a", href="href"):
@@ -105,16 +109,20 @@ def process_datetime_rmrb(day, process=True):
     return day_in_format
 
 
-def process_url(base: str, day: str, tail: str, symbol="/") -> str:
+def process_url(base: str, day: str, tail: str, symbol="/", whb=False) -> str:
     """
     一个完整的url分成3部分: 开头(base), 日期(day), 还有结尾(tail). day和tail用symbol隔开
+    :param whb: 如果是爬文汇报, 则需要另外的处理如下
     :param base:
     :param day:
     :param tail:
     :param symbol:
     :return:
     """
-    return base + day + symbol + tail
+    if whb:
+        return base + tail
+    else:
+        return base + day + symbol + tail
 
 
 def dic2df(dic):
@@ -136,7 +144,7 @@ def dic2df(dic):
 # parallel_pipeline的原型, 用于实验
 def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_selector="ul > li > a#pageLink",
              title_selector="div#titleList > ul > li > a", article_selector="div#articleContent", symbol="/",
-             process_day=True, encoding="utf-8"):
+             href_page="href", href_article="href", process_day=True, whb=False):
     """
     :param base_url: eg:http://epaper.cenews.com.cn/html/, 一家报纸的url的开头部分
     :param sample_page: eg:node_2.htm, 一家报纸的url的结尾部分
@@ -147,8 +155,10 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
     :param title_selector: title所在的位置
     :param article_selector: 新闻正文所在的位置
     :param symbol: day和tail之间的间隔符
-    :param process_day: 是否将原来的时间格式处理成 %Y-%m/%d
-    :param encoding: 编码格式, 默认utf-8
+    :param href_page: 获取的page的href
+    :param href_article: 获取正文的href
+    :param process_day: 是否将日期处理成人民日报的格式
+    :param whb: 如果是文汇报, 需要特别的处理
     :return: pd.DataFrame
     """
     calendar = get_calendar(start, end, strftime)
@@ -157,17 +167,18 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
         all_results[day] = {}
         day_in_format = process_datetime_rmrb(day=day, process=process_day)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
-        pages = get_total_pages(s_url, select=page_selector, encoding=encoding)
+        pages = get_total_pages(s_url, select=page_selector, href=href_page)
         if len(pages) > 0:  # 如果是空列表则跳过
-            pages[0] = pages[0][2:]
+            if not whb:
+                pages[0] = pages[0][2:]
             for p in pages:
-                target_url = process_url(base_url, day_in_format, p, symbol=symbol)
+                target_url = process_url(base_url, day_in_format, p, symbol=symbol, whb=whb)
                 print(target_url)
-                title, article_href = get_title(target_url, select=title_selector, encoding=encoding)
+                title, article_href = get_title(target_url, select=title_selector, href=href_article)
                 for a_id in range(len(article_href)):
-                    a_url = process_url(base_url, day_in_format, article_href[a_id], symbol=symbol)
+                    a_url = process_url(base_url, day_in_format, article_href[a_id], symbol=symbol, whb=whb)
                     print(a_url)
-                    article = get_article(a_url, select=article_selector, encoding=encoding)
+                    article = get_article(a_url, select=article_selector)
                     # print(article)
                     all_results[day][title[a_id]] = article
     all_results_df = dic2df(all_results)
@@ -176,7 +187,7 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
 
 def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_selector="ul > li > a#pageLink",
                       title_selector="div#titleList > ul > li > a", article_selector="div#articleContent", n_jobs=-1,
-                      process_day=True, symbol="/", encoding="utf-8"):
+                      process_day=True, symbol="/", encoding="utf-8", href_page="href", href_article="href", whb=False):
     """
     流程如下:
     1、获取从start到end的所有日期
@@ -197,6 +208,9 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
     :param process_day: 网页url的日期格式可能不是strftime支持的格式，故需要额外调整
     :param symbol: base, day和page中间的分隔符
     :param encoding: 编码格式, 一般为utf-8, 也可尝试utf-8-sig
+    :param href_page: 获取的page的href
+    :param href_article: 获取正文的href
+    :param whb: 如果是文汇报则需要特别的处理
     """
     calendar = get_calendar(start, end, strftime)
 
@@ -205,14 +219,15 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
         all_results[day] = {}
         day_in_format = process_datetime_rmrb(day, process=process_day)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
-        pages = get_total_pages(s_url, select=page_selector, encoding=encoding)
+        pages = get_total_pages(s_url, select=page_selector, encoding=encoding, href=href_page)
         if len(pages) > 0:  # 如果是空列表则跳过
-            pages[0] = pages[0][2:]
+            if not whb:
+                pages[0] = pages[0][2:]
             for p in pages:
-                target_url = process_url(base_url, day_in_format, p, symbol=symbol)
-                title, article_href = get_title(target_url, select=title_selector, encoding=encoding)
+                target_url = process_url(base_url, day_in_format, p, symbol=symbol, whb=whb)
+                title, article_href = get_title(target_url, select=title_selector, encoding=encoding, href=href_article)
                 for a_id in range(len(article_href)):
-                    a_url = process_url(base_url, day_in_format, article_href[a_id], symbol=symbol)
+                    a_url = process_url(base_url, day_in_format, article_href[a_id], symbol=symbol, whb=whb)
                     article = get_article(a_url, select=article_selector, encoding=encoding)
                     all_results[day][title[a_id]] = article
         return all_results
