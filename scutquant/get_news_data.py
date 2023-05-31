@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+import os
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from joblib import Parallel, delayed
@@ -239,3 +240,31 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
 
     all_results_df = dic2df(all_results_dict)
     return all_results_df
+
+
+def merge_news_data(folder_path, target_dir, name, encoding="utf-8-sig", index="datetime"):
+    """
+    example:
+
+    merge_news_data("D:/Desktop/whb/", "D:/Desktop/news/", name="whb")
+
+    :param folder_path: str, 文件夹地址
+    :param target_dir: str, 目标地址
+    :param name: str, 文件名
+    :param encoding:
+    :param index:
+    :return:
+    """
+    files = os.listdir(folder_path)
+
+    df = pd.DataFrame()
+    for file in files:
+        target_dir = folder_path + file
+        data = pd.read_csv(target_dir, encoding=encoding)
+        data.set_index(index, inplace=True)
+        df = pd.concat([df, data], axis=0)
+
+    df = df.sort_index()
+    df = df.iloc[:, 1:]
+    print(df.head(5))
+    df.to_csv(target_dir + name + ".csv", encoding=encoding)
