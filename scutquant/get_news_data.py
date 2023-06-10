@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from joblib import Parallel, delayed
 
-
 """
 此模块适用于获取那些结构为 base_url + day + page 的报纸新闻
 This module is designed to retrieve newspaper news with a url structure of "base_url + day + page".
@@ -169,6 +168,7 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
         day_in_format = process_datetime_rmrb(day=day, process=process_day)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
         pages = get_total_pages(s_url, select=page_selector, href=href_page)
+        # print(pages)
         if len(pages) > 0:  # 如果是空列表则跳过
             if not whb:
                 pages[0] = pages[0][2:]
@@ -268,3 +268,57 @@ def merge_news_data(folder_path, target_dir, name, encoding="utf-8-sig", index="
     df = df.iloc[:, 1:]
     print(df.head(5))
     df.to_csv(target_dir + name + ".csv", encoding=encoding)
+
+
+def get_whb_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取文汇报的新闻
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline(base_url="http://dzb.whb.cn/", sample_page="1/index.html#1685452485529", start=start,
+                               end=end, page_selector="a.TitleInfo", title_selector="div.title_box.list > a",
+                               article_selector="div#newsContent.news_content", href_page="data-href",
+                               process_day=False, whb=True)
+    return result
+
+
+def get_hjb_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取中国环境报的新闻(可能会封ip!)
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("http://epaper.cenews.com.cn/html/", sample_page="node_2.htm", start=start, end=end,
+                               page_selector="tr > td > a#pageLink", title_selector='tr > td:nth-of-type(2).px12 > a',
+                               article_selector="div#ozoom", n_jobs=-1, encoding="utf-8-sig")
+    return result
+
+
+def get_gmrb_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取光明日报的新闻
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("https://epaper.gmw.cn/gmrb/html/", sample_page="nbs.D110000gmrb_01.htm", start=start,
+                               end=end)
+    return result
+
+
+def get_zqb_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取中国青年报的新闻
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("http://zqb.cyol.com/html/", sample_page="nbs.D110000zgqnb_01.htm", start=start, end=end)
+    return result
