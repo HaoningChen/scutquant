@@ -167,6 +167,7 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
         all_results[day] = {}
         day_in_format = process_datetime_rmrb(day=day, process=process_day)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
+        # print(s_url)
         pages = get_total_pages(s_url, select=page_selector, href=href_page)
         # print(pages)
         if len(pages) > 0:  # 如果是空列表则跳过
@@ -195,7 +196,7 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
     2、对于每一天, 根据sample_url获取当期报纸的所有版的url
     3、对于每个url, 获取所有标题
     4、对于每个标题, 获取所有正文内容
-    4、整理成pd.DataFrame格式并输出
+    5、整理成pd.DataFrame格式并输出
 
     :param base_url: url的前半段, 一般是声明是哪家报纸
     :param sample_page: url的最后部分, 需要获取一个完整的url, 才能知道当期报纸有多少版
@@ -320,5 +321,18 @@ def get_zqb_data(start: str, end: str) -> pd.DataFrame:
     :param end: %Y-%m-%d
     :return: 包括三列: datetime, title, article
     """
-    result = parallel_pipeline("http://zqb.cyol.com/html/", sample_page="nbs.D110000zgqnb_01.htm", start=start, end=end)
+    result = pipeline("http://zqb.cyol.com/html/", sample_page="nbs.D110000zgqnb_01.htm", start=start, end=end)
+    return result
+
+
+def get_rmrb_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取人民日报的新闻
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("http://paper.people.com.cn/rmrb/html/", sample_page="nbs.D110000renmrb_01.htm",
+                               page_selector="a#pageLink", title_selector="ul >li > a", start=start, end=end)
     return result
