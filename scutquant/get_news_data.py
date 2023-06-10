@@ -336,3 +336,17 @@ def get_rmrb_data(start: str, end: str) -> pd.DataFrame:
     result = parallel_pipeline("http://paper.people.com.cn/rmrb/html/", sample_page="nbs.D110000renmrb_01.htm",
                                page_selector="a#pageLink", title_selector="ul >li > a", start=start, end=end)
     return result
+
+
+def get_zjrb_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取浙江日报的新闻
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("http://zjrb.zjol.com.cn/html/", sample_page="node_18.htm",
+                               page_selector="a#pageLink", title_selector="ul.main-ed-articlenav-list > li > a",
+                               article_selector="div#ozoom > founder-content", start=start, end=end)
+    return result
