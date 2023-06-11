@@ -260,8 +260,8 @@ def merge_news_data(folder_path, target_dir, name, encoding="utf-8-sig", index="
 
     df = pd.DataFrame()
     for file in files:
-        target_dir = folder_path + file
-        data = pd.read_csv(target_dir, encoding=encoding)
+        target = folder_path + file
+        data = pd.read_csv(target, encoding=encoding)
         data.set_index(index, inplace=True)
         df = pd.concat([df, data], axis=0)
 
