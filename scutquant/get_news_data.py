@@ -95,18 +95,22 @@ def get_article(url, encoding="utf-8", select="div#articleContent"):
         return [article.text for article in news_list]
 
 
-def process_datetime_rmrb(day, process=True):
+def process_datetime_rmrb(day, process=True, eco=False):
     """
     将日期改造成人民日报网页的形式(%Y-%m/%d)
     :param day:
     :param process: 是否整理成人民日报系列的格式, 如果否则返回原格式
+    :param eco: 经济日报的格式是%Y%m/%d, 需要额外处理
     :return:
     """
-    if process:
-        day_in_format = day[:7] + "/" + day[8:]
+    if eco:
+        return day[:4] + day[5:7] + "/" + day[8:]
     else:
-        day_in_format = day
-    return day_in_format
+        if process:
+            day_in_format = day[:7] + "/" + day[8:]
+        else:
+            day_in_format = day
+        return day_in_format
 
 
 def process_url(base: str, day: str, tail: str, symbol="/", whb=False) -> str:
@@ -144,7 +148,7 @@ def dic2df(dic):
 # parallel_pipeline的原型, 用于实验
 def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_selector="ul > li > a#pageLink",
              title_selector="div#titleList > ul > li > a", article_selector="div#articleContent", symbol="/",
-             href_page="href", href_article="href", process_day=True, whb=False):
+             href_page="href", href_article="href", process_day=True, whb=False, eco=False, encoding="utf-8"):
     """
     :param base_url: eg:http://epaper.cenews.com.cn/html/, 一家报纸的url的开头部分
     :param sample_page: eg:node_2.htm, 一家报纸的url的结尾部分
@@ -159,28 +163,30 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
     :param href_article: 获取正文的href
     :param process_day: 是否将日期处理成人民日报的格式
     :param whb: 如果是文汇报, 需要特别的处理
+    :param eco: 如果是经济日报, 日期需要额外的处理
+    :param encoding: 编码格式
     :return: pd.DataFrame
     """
     calendar = get_calendar(start, end, strftime)
     all_results = {}
     for day in calendar:
         all_results[day] = {}
-        day_in_format = process_datetime_rmrb(day=day, process=process_day)
+        day_in_format = process_datetime_rmrb(day=day, process=process_day, eco=eco)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
-        # print(s_url)
-        pages = get_total_pages(s_url, select=page_selector, href=href_page)
-        # print(pages)
+        print(s_url)
+        pages = get_total_pages(s_url, select=page_selector, href=href_page, encoding=encoding)
+        print(pages)
         if len(pages) > 0:  # 如果是空列表则跳过
-            if not whb:
+            if not (whb or eco):
                 pages[0] = pages[0][2:]
             for p in pages:
                 target_url = process_url(base_url, day_in_format, p, symbol=symbol, whb=whb)
                 print(target_url)
-                title, article_href = get_title(target_url, select=title_selector, href=href_article)
+                title, article_href = get_title(target_url, select=title_selector, href=href_article, encoding=encoding)
                 for a_id in range(len(article_href)):
                     a_url = process_url(base_url, day_in_format, article_href[a_id], symbol=symbol, whb=whb)
                     print(a_url)
-                    article = get_article(a_url, select=article_selector)
+                    article = get_article(a_url, select=article_selector, encoding=encoding)
                     # print(article)
                     all_results[day][title[a_id]] = article
     all_results_df = dic2df(all_results)
@@ -189,7 +195,8 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
 
 def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_selector="ul > li > a#pageLink",
                       title_selector="div#titleList > ul > li > a", article_selector="div#articleContent", n_jobs=-1,
-                      process_day=True, symbol="/", encoding="utf-8", href_page="href", href_article="href", whb=False):
+                      process_day=True, symbol="/", encoding="utf-8", href_page="href", href_article="href", whb=False,
+                      eco=False):
     """
     流程如下:
     1、获取从start到end的所有日期
@@ -213,17 +220,18 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
     :param href_page: 获取的page的href
     :param href_article: 获取正文的href
     :param whb: 如果是文汇报则需要特别的处理
+    :param eco: 如果是经济日报, 日期需要额外的处理
     """
     calendar = get_calendar(start, end, strftime)
 
     def process(day):
         all_results = {}
         all_results[day] = {}
-        day_in_format = process_datetime_rmrb(day, process=process_day)
+        day_in_format = process_datetime_rmrb(day, process=process_day, eco=eco)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
         pages = get_total_pages(s_url, select=page_selector, encoding=encoding, href=href_page)
         if len(pages) > 0:  # 如果是空列表则跳过
-            if not whb:
+            if not (whb or eco):
                 pages[0] = pages[0][2:]
             for p in pages:
                 target_url = process_url(base_url, day_in_format, p, symbol=symbol, whb=whb)
@@ -349,4 +357,20 @@ def get_zjrb_data(start: str, end: str) -> pd.DataFrame:
     result = parallel_pipeline("http://zjrb.zjol.com.cn/html/", sample_page="node_18.htm",
                                page_selector="a#pageLink", title_selector="ul.main-ed-articlenav-list > li > a",
                                article_selector="div#ozoom > founder-content", start=start, end=end)
+    return result
+
+
+def get_ecod_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取经济日报(eco daily)的新闻
+
+    :param start: %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("http://paper.ce.cn/pc/layout/", sample_page="node_01.html",
+                               page_selector="ul#layoutlist.page-num > li.posRelative > a",
+                               title_selector="ul#articlelist.newsList > li.clearfix > a",
+                               article_selector="div#ozoom > founder-content", start=start, end=end,
+                               encoding="utf-8-sig", eco=True)
     return result
