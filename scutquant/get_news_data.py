@@ -22,7 +22,7 @@ result.to_csv("news_env.csv", encoding="utf-8-sig)
 """
 
 
-def get_calendar(start, end, strftime="%Y-%m-%d"):
+def get_calendar(start, end, strftime="%Y-%m-%d") -> list[str]:
     """
     给定起始日期和结束日期, 生成中间的所有日期, 按strftime格式输出
     :param start: str
@@ -41,7 +41,8 @@ def get_calendar(start, end, strftime="%Y-%m-%d"):
     return calendar
 
 
-def get_total_pages(sample_url, encoding="utf-8", select='div.swiper-container > div.swiper-slide > a', href="href"):
+def get_total_pages(sample_url, encoding="utf-8", select='div.swiper-container > div.swiper-slide > a', href="href") \
+        -> list[str]:
     """
     场景: 中国能源报电子版的每一期分n版, 点开随便一版都能看到其它版的url, 现在需要获取每一期所有版的信息, 即要获取所有版的url
     :param sample_url:
@@ -53,15 +54,13 @@ def get_total_pages(sample_url, encoding="utf-8", select='div.swiper-container >
     response = requests.get(sample_url)
     if response.status_code != 200:
         # print("error occurs")
-        return []
+        total_pages = []
     else:
         response.encoding = encoding
         soup = BeautifulSoup(response.text, "html.parser")
         news_list = soup.select(select)
         total_pages = [news[href] for news in news_list]
-        # total_pages = total_pages.append(sample_url) if sample_url not in total_pages else total_pages
-        # print(total_pages)
-        return total_pages
+    return total_pages
 
 
 def get_title(url, encoding="utf-8", select="div.news > ul > li > a", href="href"):
@@ -84,7 +83,7 @@ def get_title(url, encoding="utf-8", select="div.news > ul > li > a", href="href
         return news, article_href
 
 
-def get_article(url, encoding="utf-8", select="div#articleContent"):
+def get_article(url, encoding="utf-8", select="div#articleContent") -> list | list[str]:
     response = requests.get(url)
     if response.status_code != 200:
         return []
@@ -95,15 +94,16 @@ def get_article(url, encoding="utf-8", select="div#articleContent"):
         return [article.text for article in news_list]
 
 
-def process_datetime_rmrb(day, process=True, eco=False):
+def process_datetime_rmrb(day, process=True, eco=False, nfrb=False) -> str:
     """
     将日期改造成人民日报网页的形式(%Y-%m/%d)
     :param day:
     :param process: 是否整理成人民日报系列的格式, 如果否则返回原格式
     :param eco: 经济日报的格式是%Y%m/%d, 需要额外处理
+    :param nfrb: 南方日报与经济日报的日期格式相同
     :return:
     """
-    if eco:
+    if eco or nfrb:
         return day[:4] + day[5:7] + "/" + day[8:]
     else:
         if process:
@@ -129,7 +129,7 @@ def process_url(base: str, day: str, tail: str, symbol="/", whb=False) -> str:
         return base + day + symbol + tail
 
 
-def dic2df(dic):
+def dic2df(dic) -> pd.DataFrame:
     """
     将一个字典:
     {datetime: {title: article}}转成具有datetime, title和article三列的pd.DataFrame
@@ -148,7 +148,8 @@ def dic2df(dic):
 # parallel_pipeline的原型, 用于实验
 def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_selector="ul > li > a#pageLink",
              title_selector="div#titleList > ul > li > a", article_selector="div#articleContent", symbol="/",
-             href_page="href", href_article="href", process_day=True, whb=False, eco=False, encoding="utf-8"):
+             href_page="href", href_article="href", process_day=True, whb=False, eco=False, encoding="utf-8",
+             nfrb=False) -> pd.DataFrame:
     """
     :param base_url: eg:http://epaper.cenews.com.cn/html/, 一家报纸的url的开头部分
     :param sample_page: eg:node_2.htm, 一家报纸的url的结尾部分
@@ -164,6 +165,7 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
     :param process_day: 是否将日期处理成人民日报的格式
     :param whb: 如果是文汇报, 需要特别的处理
     :param eco: 如果是经济日报, 日期需要额外的处理
+    :param nfrb: 如果是南方日报, page需要额外的处理
     :param encoding: 编码格式
     :return: pd.DataFrame
     """
@@ -171,13 +173,13 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
     all_results = {}
     for day in calendar:
         all_results[day] = {}
-        day_in_format = process_datetime_rmrb(day=day, process=process_day, eco=eco)
+        day_in_format = process_datetime_rmrb(day=day, process=process_day, eco=eco, nfrb=nfrb)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
         print(s_url)
         pages = get_total_pages(s_url, select=page_selector, href=href_page, encoding=encoding)
-        print(pages)
+        # print(pages)
         if len(pages) > 0:  # 如果是空列表则跳过
-            if not (whb or eco):
+            if not (whb or eco or nfrb):
                 pages[0] = pages[0][2:]
             for p in pages:
                 target_url = process_url(base_url, day_in_format, p, symbol=symbol, whb=whb)
@@ -196,7 +198,7 @@ def pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_select
 def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", page_selector="ul > li > a#pageLink",
                       title_selector="div#titleList > ul > li > a", article_selector="div#articleContent", n_jobs=-1,
                       process_day=True, symbol="/", encoding="utf-8", href_page="href", href_article="href", whb=False,
-                      eco=False):
+                      eco=False, nfrb=False) -> pd.DataFrame:
     """
     流程如下:
     1、获取从start到end的所有日期
@@ -221,17 +223,18 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
     :param href_article: 获取正文的href
     :param whb: 如果是文汇报则需要特别的处理
     :param eco: 如果是经济日报, 日期需要额外的处理
+    :param nfrb: 如果是南方日报, 日期需要额外的处理
     """
     calendar = get_calendar(start, end, strftime)
 
     def process(day):
         all_results = {}
         all_results[day] = {}
-        day_in_format = process_datetime_rmrb(day, process=process_day, eco=eco)
+        day_in_format = process_datetime_rmrb(day, process=process_day, eco=eco, nfrb=nfrb)
         s_url = process_url(base_url, day_in_format, sample_page, symbol=symbol)
         pages = get_total_pages(s_url, select=page_selector, encoding=encoding, href=href_page)
         if len(pages) > 0:  # 如果是空列表则跳过
-            if not (whb or eco):
+            if not (whb or eco or nfrb):
                 pages[0] = pages[0][2:]
             for p in pages:
                 target_url = process_url(base_url, day_in_format, p, symbol=symbol, whb=whb)
@@ -251,7 +254,8 @@ def parallel_pipeline(base_url, sample_page, start, end, strftime="%Y-%m-%d", pa
     return all_results_df
 
 
-def merge_news_data(folder_path, target_dir, name, encoding="utf-8-sig", index="datetime"):
+def merge_news_data(folder_path, target_dir, name, input_encoding="utf-8-sig", output_encoding="utf-8-sig",
+                    index="datetime"):
     """
     example:
 
@@ -260,7 +264,8 @@ def merge_news_data(folder_path, target_dir, name, encoding="utf-8-sig", index="
     :param folder_path: str, 文件夹地址
     :param target_dir: str, 目标地址
     :param name: str, 文件名
-    :param encoding:
+    :param input_encoding: 读入文件的encoding格式
+    :param output_encoding: 输出文件的encoding格式
     :param index:
     :return:
     """
@@ -269,14 +274,15 @@ def merge_news_data(folder_path, target_dir, name, encoding="utf-8-sig", index="
     df = pd.DataFrame()
     for file in files:
         target = folder_path + file
-        data = pd.read_csv(target, encoding=encoding)
+        data = pd.read_csv(target, encoding=input_encoding)
+        data = data[["datetime", "title", "article"]]
         data.set_index(index, inplace=True)
         df = pd.concat([df, data], axis=0)
 
     df = df.sort_index()
-    df = df.iloc[:, 1:]
+    # df = df.iloc[:, 1:]
     print(df.head(5))
-    df.to_csv(target_dir + name + ".csv", encoding=encoding)
+    df.to_csv(target_dir + name + ".csv", encoding=output_encoding)
 
 
 def get_whb_data(start: str, end: str) -> pd.DataFrame:
@@ -329,7 +335,7 @@ def get_zqb_data(start: str, end: str) -> pd.DataFrame:
     :param end: %Y-%m-%d
     :return: 包括三列: datetime, title, article
     """
-    result = pipeline("http://zqb.cyol.com/html/", sample_page="nbs.D110000zgqnb_01.htm", start=start, end=end)
+    result = parallel_pipeline("http://zqb.cyol.com/html/", sample_page="nbs.D110000zgqnb_01.htm", start=start, end=end)
     return result
 
 
@@ -362,7 +368,7 @@ def get_zjrb_data(start: str, end: str) -> pd.DataFrame:
 
 def get_ecod_data(start: str, end: str) -> pd.DataFrame:
     """
-    获取经济日报(eco daily)的新闻
+    获取经济日报(eco daily)的新闻, 适用于2022-04-09开始至今的新闻
 
     :param start: %Y-%m-%d
     :param end: %Y-%m-%d
@@ -372,5 +378,70 @@ def get_ecod_data(start: str, end: str) -> pd.DataFrame:
                                page_selector="ul#layoutlist.page-num > li.posRelative > a",
                                title_selector="ul#articlelist.newsList > li.clearfix > a",
                                article_selector="div#ozoom > founder-content", start=start, end=end,
-                               encoding="utf-8-sig", eco=True)
+                               encoding="utf-8", eco=True)
     return result
+
+
+def get_ecod_old_data(start: str, end: str) -> pd.DataFrame:
+    """
+    获取经济日报(eco daily)2010-01-01至2022-04-08的新闻
+
+    :param start:  %Y-%m-%d
+    :param end: %Y-%m-%d
+    :return: 包括三列: datetime, title, article
+    """
+    result = parallel_pipeline("http://paper.ce.cn/jjrb/html/", sample_page="node_2.htm",
+                               page_selector="td.default[align='left'] > a#pageLink",
+                               title_selector="td.default[valign='top'] > a",
+                               article_selector="div#ozoom > founder-content", start=start, end=end,
+                               encoding="utf-8", eco=False)
+    return result
+
+
+def get_today_news(news_list: list = None) -> dict:
+    """
+    :param news_list: 包含报纸名的列表, rmrb: 人民日报; gmrb: 光明日报; zqb: 中国青年报; whb: 文汇报; zjrb: 浙江日报; ecod: 经济日报
+    :return: 包含当日报纸新闻的dict, 每个key下的内容为对应报纸新闻的pd.DataFrame
+    """
+    if news_list is None:
+        news_list = ["rmrb", "gmrb", "zqb", "whb", "zjrb", "ecod"]
+    today = datetime.today().strftime("%Y-%m-%d")
+    results = {}
+    if "rmrb" in news_list:
+        results["rmrb"] = get_rmrb_data(start=today, end=today)
+    if "gmrb" in news_list:
+        results["gmrb"] = get_gmrb_data(start=today, end=today)
+    if "zqb" in news_list:
+        results["zqb"] = get_zqb_data(start=today, end=today)
+    if "whb" in news_list:
+        results["whb"] = get_whb_data(start=today, end=today)
+    if "zjrb" in news_list:
+        results["zjrb"] = get_zjrb_data(start=today, end=today)
+    if "ecod" in news_list:
+        results["ecod"] = get_ecod_data(start=today, end=today)
+    return results
+
+
+def get_all_news(start: str, end: str, news_list: list = None) -> dict:
+    """
+    :param start: 开始日期, %Y-%m-%d格式
+    :param end: 截止日期, %Y-%m-%d格式
+    :param news_list: 包含报纸名的列表, rmrb: 人民日报; gmrb: 光明日报; zqb: 中国青年报; whb: 文汇报; zjrb: 浙江日报; ecod: 经济日报
+    :return: 包含当日报纸新闻的dict, 每个key下的内容为对应报纸新闻的pd.DataFrame
+    """
+    if news_list is None:
+        news_list = ["rmrb", "gmrb", "zqb", "whb", "zjrb", "ecod"]
+    results = {}
+    if "rmrb" in news_list:
+        results["rmrb"] = get_rmrb_data(start=start, end=end)
+    if "gmrb" in news_list:
+        results["gmrb"] = get_gmrb_data(start=start, end=end)
+    if "zqb" in news_list:
+        results["zqb"] = get_zqb_data(start=start, end=end)
+    if "whb" in news_list:
+        results["whb"] = get_whb_data(start=start, end=end)
+    if "zjrb" in news_list:
+        results["zjrb"] = get_zjrb_data(start=start, end=end)
+    if "ecod" in news_list:
+        results["ecod"] = get_ecod_data(start=start, end=end)
+    return results
