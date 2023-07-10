@@ -1,4 +1,5 @@
-def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit="lot", max_volume=0.05):
+def get_volume(asset: list, price: dict = None, volume: dict = None, cash_available: float = None, num: int = 10,
+               unit: str = "lot", max_volume: float = 0.05) -> list[int]:
     """
     生成每笔交易的交易量
     :param asset: list
@@ -16,13 +17,13 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
             max_vol[k] = int(volume[k] * max_volume + 0.5)  # 总交易量*max_volume, 四舍五入
     if (price is None) or (cash_available is None):
         n_volume = [num for _ in range(len(asset))]  # 可以自定义函数, 例如求解最优资产组合等, 这里用默认
-        if unit == 'share':  # 默认单位是手, 如果想按股交易就把n_volume乘100
+        if unit == "share":  # 默认单位是手, 如果想按股交易就把n_volume乘100
             for i in range(len(n_volume)):
                 n_volume[i] *= 100
     else:
         invest = cash_available / len(asset) if len(asset) != 0 else 0  # 将可用资金平均地投资到可投资的资产中
         n_volume = []
-        if unit == 'lot':
+        if unit == "lot":
             for a in asset:
                 # 考虑到大单不一定成交，最大不超过max_volume手
                 # 如果是按手下单，将每份的资金除以(price * 100). 因为price是每股的价格
@@ -35,7 +36,8 @@ def get_volume(asset, price=None, volume=None, cash_available=None, num=10, unit
     return n_volume
 
 
-def trade(code, num=10, unit=None, price=None, volume=None, cash_available=None, max_volume=0.05):
+def trade(code: list, num: int = 10, unit: str = "lot", price: dict = None, volume: dict = None,
+          cash_available: float = None, max_volume: float = 0.05) -> dict:
     """
     :param code: code of assets to be traded
     :param num: number of units
@@ -59,17 +61,17 @@ def get_assets_list(data, index_level):
     return lis
 
 
-def get_price(data, price="price"):
+def get_price(data, price: str = "price") -> dict:
     current_price = data.droplevel(0)[price].to_dict()
     return current_price
 
 
-def get_vol(data, volume="volume"):
+def get_vol(data, volume: str = "volume") -> dict:
     current_volume = data.droplevel(0)[volume].to_dict()
     return current_volume
 
 
-def check_signal(order):
+def check_signal(order: dict) -> dict:
     order_ = order.copy()
     for k in order_.keys():
         if order[k] <= 0:
@@ -154,8 +156,8 @@ class BaselineStrategy(BaseStrategy):
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
-            'buy': buy_dict,
-            'sell': sell_dict
+            "buy": buy_dict,
+            "sell": sell_dict
         }
         return order, price
 
@@ -198,7 +200,7 @@ class TopKStrategy(BaseStrategy):
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
 
-    def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
+    def to_signal(self, data, pred="predict", index_level="code", cash_available: float = None):
         n_k = int(len(data) * self.k + 0.5)
 
         data_ = data.copy().sort_values("predict", ascending=False)
@@ -219,8 +221,8 @@ class TopKStrategy(BaseStrategy):
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
-            'buy': buy_dict,
-            'sell': sell_dict
+            "buy": buy_dict,
+            "sell": sell_dict
         }
         return order, price
 
@@ -286,8 +288,8 @@ class StrictTopKStrategy(BaseStrategy):
 
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
-            'buy': buy_dict,
-            'sell': sell_dict
+            "buy": buy_dict,
+            "sell": sell_dict
         }
         return order, price
 
@@ -351,7 +353,7 @@ class SigmaStrategy(BaseStrategy):
                               max_volume=self.max_volume)
         buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
         order = {
-            'buy': buy_dict,
-            'sell': sell_dict
+            "buy": buy_dict,
+            "sell": sell_dict
         }
         return order, price

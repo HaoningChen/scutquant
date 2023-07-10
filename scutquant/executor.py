@@ -1,7 +1,8 @@
+import pandas as pd
 from . import account, signal_generator, strategy  # 别动这行！
 
 
-def prepare(predict, data, price, volume, real_ret):
+def prepare(predict: pd.DataFrame, data: pd.DataFrame, price: str, volume: str, real_ret: pd.Series) -> pd.DataFrame:
     """
     :param predict: pd.DataFrame, 预测值, 应包括"predict"
     :param data: pd.DataFrame, 提供时间和价格信息
@@ -11,21 +12,21 @@ def prepare(predict, data, price, volume, real_ret):
     :return: pd.DataFrame
     """
     data_ = data.copy()
-    predict.columns = ['predict']
+    predict.columns = ["predict"]
     index = predict.index
     data1 = data_[data_.index.isin(index)]
     data1 = data1.reset_index()
     data1 = data1.set_index(predict.index.names).sort_index()
-    predict['price'] = data1[price]
-    predict['volume'] = data1[volume]  # 当天的交易量, 假设交易量不会发生大的跳跃
-    predict.index.names = ['time', 'code']
+    predict["price"] = data1[price]
+    predict["volume"] = data1[volume]  # 当天的交易量, 假设交易量不会发生大的跳跃
+    predict.index.names = ["time", "code"]
     predict["price"] = predict["price"].groupby(["code"]).shift(-1)  # 指令是T时生成的, 但是T+1执行, 所以是shift(-1)
     predict["R"] = real_ret[real_ret.index.isin(predict.index)]  # 本来就是T+2对T+1的收益率, 因此不用前移
     return predict.dropna()
 
 
 class Executor:
-    def __init__(self, generator, stra, acc, trade_params):
+    def __init__(self, generator: dict, stra, acc: dict, trade_params: dict):
         # todo: 增加信号发射器的可选参数
         """
         :param generator: dict, 包括 'mode' 和其它内容, 为执行器找到合适的信号生成方式
@@ -38,20 +39,20 @@ class Executor:
         if "cash" not in keys:
             acc["cash"] = 1e8
         if "position" not in keys:
-            acc["position"] = None
+            acc["position"] = {}
         if "available" not in keys:
-            acc["available"] = None
+            acc["available"] = {}
         if "ben_position" not in keys:
-            acc["ben_position"] = None
+            acc["ben_position"] = {}
 
         self.mode = generator['mode']
 
-        self.init_cash = acc['cash']
-        self.position = acc['position']
-        self.value_hold = 0.0
-        self.available = acc['available']
-        self.ben_position = acc['ben_position']
-        self.ben_cash = acc['cash']
+        self.init_cash: float = acc['cash']
+        self.position: dict = acc['position']
+        self.value_hold: float = 0.0
+        self.available: dict = acc['available']
+        self.ben_position: dict = acc['ben_position']
+        self.ben_cash: float = acc['cash']
 
         self.price = None
         self.time = []
@@ -65,7 +66,7 @@ class Executor:
         self.s = getattr(strategy, stra["class"])
         self.s = self.s(stra["kwargs"])
 
-    def init_account(self, data):
+    def init_account(self, data: pd.DataFrame):
         """
         :param data: pd.DataFrame, 索引为[('time', 'code')], 列至少应包括 'price' 和 't', 见 execute() 的注释
         :return:
@@ -101,17 +102,17 @@ class Executor:
                 self.value_hold += self.user_account.position[code] * self.price[code]
         return self.user_account.value * self.s.risk_degree - self.value_hold
 
-    def execute(self, data, verbose=0):
+    def execute(self, data: pd.DataFrame, verbose: int = 0):
         # todo: 增加simulate模式
         """
         :param data: pd.DataFrame, 包括三列：'predict', 'volume', 'price', 'label' 以及多重索引[('time', 'code')]
-        :param verbose: bool, 是否输出交易记录
+        :param verbose: int, 是否输出交易记录
         :return: self
         """
 
-        def check_names(index=data.index, predict='predict', price='price'):
+        def check_names(index=data.index, predict="predict", price="price"):
             names = index.names
-            if names[0] != 'time' or names[1] != 'code':
+            if names[0] != "time" or names[1] != "code":
                 raise ValueError("index should be like [('time', 'code')]")
             elif predict not in data.columns:
                 raise ValueError("data should include column" + predict)
@@ -121,7 +122,7 @@ class Executor:
         check_names()
         Executor.init_account(self, data)
         Executor.create_account(self)
-        if self.mode == 'generate':
+        if self.mode == "generate":
             time = data.index.get_level_values(0).unique().values
             for t in time:
                 idx = data["R"].groupby(data.index.names[0]).mean()  # 大盘收益率
@@ -146,4 +147,4 @@ class Executor:
                 self.benchmark.value *= (1 + idx[idx.index == t][0])  # 乘上1+大盘收益率, 相当于等权指数
                 self.benchmark.val_hist.append(self.benchmark.value)
         else:
-            raise ValueError('simulate mode is not available by far')
+            raise ValueError("simulate mode is not available by far")

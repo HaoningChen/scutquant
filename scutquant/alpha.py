@@ -40,6 +40,7 @@
            并进行5%水平下的双侧检验（书上p26原话是这么说，但如果预期因子收益率为正数则应该用单侧检验?）
     (2)截面回归（或时序回归），即 因子检验方法 (1)，并做t检验
 """
+import numpy as np
 import pandas as pd
 import time
 from scipy.stats import norm
@@ -57,7 +58,7 @@ def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str):
     return beta * concat_data[feature]
 
 
-def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label"):
+def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label") -> pd.DataFrame:
     """
     change factor return into factors
     将因子收益转换成因子
@@ -223,7 +224,7 @@ def QTL(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGrou
     return pd.concat([X, features], axis=1)
 
 
-def CORR_ts(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
+def ts_CORR(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
             name: str = "CORR") -> pd.DataFrame:
     # 面板数据与时序数据计算相关系数, 在计算例如个股收益率与大盘收益率的相关系数时比普通方法快
     features = pd.DataFrame()
@@ -235,6 +236,17 @@ def CORR_ts(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: 
 def calc_corr(data: pd.DataFrame, feature: str, label: str, window=None):
     corr = data[feature].rolling(window).corr(data[label])
     return corr
+
+
+def ts_decay(data: pd.Series, window: int, lambda_val: float = 0.94) -> pd.Series:
+    """
+    :param data: 原序列数据
+    :param window: 衰减的期数
+    :param lambda_val: 超参数，根据《风险管理与金融机构》一书，将其设为0.94
+    :return: pd.Series
+    """
+    weight: float = 1.0 - np.exp(-lambda_val * window)
+    return data * weight
 
 
 def CORR(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, feature: str, label: str, name: str = "CORR",
@@ -463,10 +475,10 @@ def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False
         X = QTL(X, data[close], group_c, windows=windows)
         # X = MA(X, data["ret"], group_r, windows=windows, name="MA2_")
         # X = STD(X, data["ret"], group_r, windows=windows, name="STD2_")
-        X = CORR_ts(X, group_r, mean_ret, windows=windows)
+        X = ts_CORR(X, group_r, mean_ret, windows=windows)
 
         group_r_rank = X["RET2_1"].groupby(groupby)
-        X = CORR_ts(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
+        X = ts_CORR(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
 
         # 来自行为金融学的指标
         X = RSI(X, group_c, windows=windows)
@@ -624,7 +636,7 @@ def alpha360(kwargs: dict, shift: int = 60, fillna: bool = False) -> pd.DataFram
 
 def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
     """
-    经过100万级的数据的上百次实验, 证明此方法比调用sklearn.linear_model的LinearRegression平均快一倍
+    经过百万级的数据的上千次实验, 发现此方法比调用sklearn.linear_model的LinearRegression平均快一倍
     """
     cov = x.cov(y)
     var = x.var()

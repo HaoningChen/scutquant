@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-def update_x(x1, x2, n):
+def update_x(x1: pd.DataFrame, x2: pd.DataFrame, n: int) -> tuple[pd.DataFrame, bool]:
     # 先入先出栈，容纳指定tick数量的面板数据
     x = pd.concat([x1, x2], axis=0)
     tx = x.index.get_level_values(0).unique()
@@ -13,14 +13,14 @@ def update_x(x1, x2, n):
     return x, get_predict
 
 
-def update_factors(x, f_kwargs):
+def update_factors(x: pd.DataFrame, f_kwargs: dict) -> dict:
     # 更新生成因子的kwargs
-    f_kwargs['data'] = x
+    f_kwargs["data"] = x
     return f_kwargs
 
 
-def simulate(x, current_time, get_predict, factor_kwargs, ymean, ystd, model, strategy, cash_available=None,
-             price='price', volume="volume"):
+def simulate(x: pd.DataFrame, current_time, get_predict: bool, factor_kwargs: dict, ymean, ystd, model, strategy,
+             cash_available: float = None, price: str = "price", volume: str = "volume"):
     """
     # 用于模拟实盘, 即动态更新因子和预测值
 
@@ -44,10 +44,10 @@ def simulate(x, current_time, get_predict, factor_kwargs, ymean, ystd, model, st
         factors -= x.groupby(x.index.names[1]).mean()
         factors /= x.groupby(x.index.names[1]).std()
         factors.clip(-3, 3, inplace=True)
-        factors = factors.fillna(method='ffill').dropna(axis=0)
+        factors = factors.fillna(method="ffill").dropna(axis=0)
 
         predict = model.predict(factors)
-        predict = pd.DataFrame(predict, index=factors.index, columns=['predict'])
+        predict = pd.DataFrame(predict, index=factors.index, columns=["predict"])
         predict["predict"] += ymean  # 考虑换成截面上的均值的均值
         predict["predict"] *= ystd  # 考虑换成截面上的标准差的均值
         predict = predict[predict.index.get_level_values(0) == current_time]
@@ -67,7 +67,7 @@ def simulate(x, current_time, get_predict, factor_kwargs, ymean, ystd, model, st
     return dic
 
 
-def generate(data, strategy, cash_available=None):
+def generate(data: pd.DataFrame, strategy, cash_available: float = None) -> dict:
     """
     :param data: prediction, pd.DataFrame
     :param strategy: 策略

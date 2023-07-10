@@ -38,7 +38,8 @@ class Account:
         self.turnover = []
         self.trade_value = 0.0
 
-    def check_order(self, order, price, cost_rate=0.0015, min_cost=5):  # 检查是否有足够的资金完成order, 如果不够则不买
+    def check_order(self, order: dict, price: dict, cost_rate: float = 0.0015, min_cost: float = 5) -> \
+            tuple[dict, bool]:  # 检查是否有足够的资金完成order, 如果不够则不买
         # todo: 增加风险度判断（执行该order会不会超出最大风险度）
         cash_inflow = 0.0
         cash_outflow = 0.0
@@ -55,7 +56,7 @@ class Account:
         else:
             return order, True
 
-    def update_price(self, price):  # 更新市场价格
+    def update_price(self, price: dict):  # 更新市场价格
         for code in price.keys():
             self.price[code] = price[code]
 
@@ -67,7 +68,7 @@ class Account:
         self.value = self.cash + value_hold
         self.val_hist.append(self.value)
 
-    def update_trade_hist(self, order):  # 更新交易记录
+    def update_trade_hist(self, order: dict):  # 更新交易记录
         if order is not None:
             self.buy_hist.append(order['buy'])
             self.sell_hist.append(order['sell'])
@@ -75,7 +76,7 @@ class Account:
             self.buy_hist.append({})
             self.sell_hist.append({})
 
-    def buy(self, order_buy, cost_rate=0.0015, min_cost=5):  # 买入函数
+    def buy(self, order_buy: dict, cost_rate: float = 0.0015, min_cost: float = 5):  # 买入函数
         buy_value = 0.0
         for code in order_buy.keys():  # 如果资产池里已经有该资产了，那就可以直接加，没有的话就要在字典里添加键值对
             if code in self.position.keys():
@@ -90,7 +91,7 @@ class Account:
         self.cost += cost
         self.cash -= (buy_value + cost)  # 更新现金
 
-    def sell(self, order_sell, cost_rate=0.0005, min_cost=5):  # 卖出函数
+    def sell(self, order_sell: dict, cost_rate: float = 0.0005, min_cost: float = 5):  # 卖出函数
         # 做空时, 如果用底仓做空, 则清空底仓; 若融券做空, 则按照"short_volume"参数决定做空数量
         sell_value = 0.0
         for code in order_sell.keys():
@@ -120,7 +121,7 @@ class Account:
         self.turnover.append(self.trade_value * 2 / (self.value + value_before_trade))
         Account.update_value(self)
 
-    def auto_offset(self, freq, cost_buy=0.0015, cost_sell=0.0005, min_cost=5):  # 自动平仓
+    def auto_offset(self, freq: int, cost_buy: float = 0.0015, cost_sell: float = 0.0005, min_cost: float = 5):  # 自动平仓
         """
         example: 对某只股票的买入记录为[4, 1, 1, 2, 3], 假设买入后2个tick平仓, 则自动平仓应为[nan, nan, 4, 1, 1]
 
@@ -136,7 +137,8 @@ class Account:
             Account.sell(self, offset_sell, cost_sell, min_cost)  # 卖出平仓
             Account.buy(self, offset_buy, cost_buy, min_cost)  # 买入平仓
 
-    def risk_control(self, risk_degree, cost_rate=0.0005, min_cost=5):  # 控制风险, 当风险度超过计划风险度时, 按比例减少持仓
+    def risk_control(self, risk_degree: float, cost_rate: float = 0.0005, min_cost: float = 5):
+        # 控制风险, 当风险度超过计划风险度时, 按比例减少持仓
         # 令risk回到risk_degree: 各资产持仓量为向量x, 各资产市场价格为向量p, 总市值为v, 风险度 r = p*x/v. 即px = rv.
         # 求出减持比例b, 使得r = p*(1-b)x/v = risk_degree. 即1-b = risk_degree * v / (p * x), b = 1- (risk_degree * v) / (p*x)
         # 代入px=rv，得b = 1 - (risk_degree * v) / (r * v) = 1 - risk_degree / r

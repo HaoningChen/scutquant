@@ -8,6 +8,7 @@ import xgboost
 from scipy.signal import periodogram
 from statsmodels.graphics.tsaplots import plot_pacf
 import lightgbm as lgb
+from sklearn import linear_model
 import pickle
 import random
 import warnings
@@ -16,7 +17,7 @@ warnings.filterwarnings("ignore")
 random.seed(2046)
 
 
-def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None, index: list = None)\
+def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime', col: list = None, index: list = None) \
         -> pd.DataFrame:
     """
     将序列数据(例如宏观的利率数据)按时间整合到面板数据中(例如沪深300成分)
@@ -43,7 +44,8 @@ def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime',
 ####################################################
 # 特征工程
 ####################################################
-def price2ret(price, shift1=-1, shift2=-2, groupby=None, fill=False):
+def price2ret(price: pd.DataFrame | pd.Series, shift1: int = -1, shift2: int = -2, groupby: str = None,
+              fill: bool = False) -> pd.Series:
     """
     return_rate = price_shift2 / price_shift1 - 1
 
@@ -65,7 +67,7 @@ def price2ret(price, shift1=-1, shift2=-2, groupby=None, fill=False):
     return ret
 
 
-def zscorenorm(X, mean=None, std=None, clip=3):
+def zscorenorm(X: pd.DataFrame | pd.Series, mean=None, std=None, clip=3) -> pd.DataFrame | pd.Series:
     if mean is None:
         mean = X.mean()
     if std is None:
@@ -77,7 +79,7 @@ def zscorenorm(X, mean=None, std=None, clip=3):
     return X
 
 
-def robustzscorenorm(X, median=None, clip=3):
+def robustzscorenorm(X: pd.DataFrame | pd.Series, median=None, clip=3) -> pd.DataFrame | pd.Series:
     if median is None:
         median = X.median()
     X -= median
@@ -88,7 +90,7 @@ def robustzscorenorm(X, median=None, clip=3):
     return X
 
 
-def minmaxnorm(X, Min=None, Max=None, clip=3):
+def minmaxnorm(X: pd.DataFrame | pd.Series, Min=None, Max=None, clip=3) -> pd.DataFrame | pd.Series:
     if Min is None:
         Min = X.min()
     if Max is None:
@@ -100,7 +102,7 @@ def minmaxnorm(X, Min=None, Max=None, clip=3):
     return X
 
 
-def ranknorm(X, groupby=None):
+def ranknorm(X: pd.DataFrame | pd.Series, groupby: str = None) -> pd.DataFrame | pd.Series:
     if groupby is None:
         X_rank = X.rank(pct=True)
     else:
@@ -110,7 +112,7 @@ def ranknorm(X, groupby=None):
     return X_rank
 
 
-def make_pca(X):
+def make_pca(X: pd.DataFrame | pd.Series) -> dict:
     from sklearn.decomposition import PCA
     index = X.index
     pca = PCA()
@@ -152,7 +154,7 @@ def plot_pca_variance(pca):
     return axs
 
 
-def calc_multicollinearity(X, show=False):
+def calc_multicollinearity(X: pd.DataFrame, show: bool = False):
     """
         反映多重共线性严重程度
     """
@@ -167,7 +169,7 @@ def calc_multicollinearity(X, show=False):
     return v / len(X.columns)
 
 
-def make_mi_scores(X, y):
+def make_mi_scores(X: pd.DataFrame | pd.Series, y: pd.DataFrame | pd.Series) -> pd.Series:
     """
     :param X: pd.DataFrame, 输入的特征
     :param y: pd.DataFrame or pd.Series, 输入的目标值
@@ -185,26 +187,32 @@ def make_mi_scores(X, y):
     return mi_scores
 
 
-def make_r_scores(X, y):
+def make_r_scores(X: pd.DataFrame | pd.Series, y: pd.DataFrame | pd.Series) -> pd.Series:
     """
     :param X: pd.DataFrame or pd.Series, 特征值
     :param y: pd.DataFrame or pd.Series, 目标值
     :return: pd.Series, index为特征名, value为相关系数
     """
-    r = []
+    r: list[float] = []
     cols = X.columns
     for c in cols:
         r.append(pearson_corr(X[c], y))
-    r = pd.Series(r, index=cols, name='R Scores').sort_values(ascending=False)
-    return r
+    result = pd.Series(r, index=cols, name='R Scores').sort_values(ascending=False)
+    return result
 
 
-def show_dist(X):
+def show_dist(X: pd.Series | pd.DataFrame) -> None:
+    """
+    画出数据分布(密度)
+
+    :param X:
+    :return:
+    """
     sns.kdeplot(X, shade=True)
     plt.show()
 
 
-def feature_selector(df, score, value=0, verbose=0):
+def feature_selector(df: pd.DataFrame, score: pd.Series, value: float = 0, verbose: int = 0) -> pd.DataFrame:
     """
     :param df: pd.DataFrame, 输入的数据(特征)
     :param score: pd.DataFrame, 特征得分，index为特征名，value为得分
@@ -223,7 +231,8 @@ def feature_selector(df, score, value=0, verbose=0):
 ####################################################
 # 数据清洗
 ####################################################
-def align(x, y):
+def align(x: pd.Series | pd.DataFrame, y: pd.Series | pd.DataFrame) \
+        -> tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
     align x's index with y
     :param x: pd.DataFrame or pd.Series
@@ -239,8 +248,8 @@ def align(x, y):
     return x, y
 
 
-def percentage_missing(X):
-    percent_missing = 100 * ((X.isnull().sum()).sum() / np.product(X.shape))
+def percentage_missing(X: pd.Series | pd.DataFrame) -> float:
+    percent_missing: float = 100 * ((X.isnull().sum()).sum() / np.product(X.shape))
     return percent_missing
 
 
@@ -250,7 +259,7 @@ def process_inf(X: pd.DataFrame) -> pd.DataFrame:
     return X
 
 
-def clean(X: pd.DataFrame) -> pd.DataFrame:
+def clean(X: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
     X.dropna(axis=1, how='all', inplace=True)
     X.fillna(method='ffill', inplace=True)
     X.dropna(axis=0, inplace=True)
@@ -258,7 +267,7 @@ def clean(X: pd.DataFrame) -> pd.DataFrame:
     return X
 
 
-def calc_0(X, method='precise', val=0):  # 计算0或者其它数值的占比
+def calc_0(X: pd.DataFrame | pd.Series, method: str = "precise", val: float = 0) -> float:  # 计算0或者其它数值的占比
     """
     :param X: pd.DataFrame, 输入的数据
     :param method: 'precise' or 'range'，需要计算占比的是数值还是某个范围
@@ -266,18 +275,18 @@ def calc_0(X, method='precise', val=0):  # 计算0或者其它数值的占比
     :return: float, 比例
     """
     s = 0
-    if method == 'precise':
+    if method == "precise":
         for i in range(0, len(X)):
             if X[i] == val:
                 s += 1
-    elif method == 'range':
+    elif method == "range":
         for i in range(0, len(X)):
             if -val <= X[i] <= val:
                 s += 1
     return s / len(X)
 
 
-def down_sample(X, col, val=0, n=0.35):
+def down_sample(X: pd.DataFrame, col: str, val: int = 0, n: float = 0.35) -> pd.DataFrame:
     """
     :param X: pd.DataFrame, 输入的数据
     :param col: str, 需要降采样的列名
@@ -291,7 +300,7 @@ def down_sample(X, col, val=0, n=0.35):
     return X.drop(choice, axis=0)
 
 
-def bootstrap(X, col, val=0, windows=5, n=0.35):
+def bootstrap(X: pd.DataFrame, col: str, val: int = 0, windows: int = 5, n: float = 0.35) -> pd.DataFrame:
     """
     :param X: pd.DataFrame，输入的数据
     :param col: str, 需要升采样的列名
@@ -315,7 +324,8 @@ def bootstrap(X, col, val=0, windows=5, n=0.35):
 ####################################################
 # 拆分数据集
 ####################################################
-def split_by_date(X, train_start_date, train_end_date, valid_start_date, valid_end_date):
+def split_by_date(X: pd.DataFrame | pd.Series, train_start_date: str, train_end_date: str, valid_start_date: str,
+                  valid_end_date: str) -> tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
     :param X: pd.DataFrame
     :param train_start_date: str, 训练集的第一天, 例如“2020-12-28”
@@ -331,7 +341,8 @@ def split_by_date(X, train_start_date, train_end_date, valid_start_date, valid_e
     return X_train, X_valid
 
 
-def split(X, params=None):
+def split(X: pd.DataFrame | pd.Series, params: dict = None) -> \
+        tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
     相当于sklearn的train_test_split
     :param X: pd.DataFrame
@@ -352,7 +363,8 @@ def split(X, params=None):
     return X_train, X_valid
 
 
-def group_split(X, params=None):
+def group_split(X: pd.DataFrame | pd.Series, params: dict = None) -> \
+        tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
     以当天的所有股票为整体, 随机按比例拆出若干天作为训练集和验证集
     :param X: pd.DataFrame
@@ -372,7 +384,8 @@ def group_split(X, params=None):
     return X_train, X_valid
 
 
-def split_data_by_date(data, kwargs):
+def split_data_by_date(data: pd.DataFrame | pd.Series, kwargs: dict) -> \
+        tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
     按照日期拆出(整段)的测试集, 然后剩下的数据按照参数"split_method"和"split_kwargs"拆除训练集和验证机
     :param data: pd.DataFrame
@@ -413,7 +426,8 @@ def split_data_by_date(data, kwargs):
 ####################################################
 # 自动处理器
 ####################################################
-def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, orth=True, clip=3, split_params=None):
+def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", label_norm: bool = True,
+                 select: bool = False, orth: bool = False, clip=3, split_params: dict = None) -> dict:
     """
     :param X: pd.DataFrame，原始特征，包括了目标值
     :param y: str，目标值所在列的列名
@@ -566,11 +580,12 @@ def auto_process(X, y, groupby=None, norm='z', label_norm=True, select=True, ort
 ####################################################
 # 自动建模（线性回归模型）
 ####################################################
-def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=None, cv=10, max_iter=1000, verbose=1):
+def auto_lrg(x: pd.DataFrame, y: pd.Series | pd.DataFrame, method: str = "ols", fit_params: bool = False, alphas=None,
+             logspace_params=None, cv: float = 10, max_iter: int = 1000, verbose: int = 1):
     """
     :param x: pd.DataFrame, 特征值
     :param y: pd.Series or pd.DataFrame, 目标值
-    :param method: str, 回归方法, 可选'ols', 'lasso', 'ridge'和'logistic'
+    :param method: str, 回归方法, 可选'ols', 'lasso', 'ridge'或'logistic'
     :param fit_params: bool, 是否自动调参
     :param alphas: np.ndarray or others, 回归的超参数
     :param logspace_params: list[min, max, n_sample], 超参数搜索空间和采样的样本量
@@ -582,7 +597,6 @@ def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=
     if alphas is None:
         if logspace_params is None:
             logspace_params = [-5, 2, 200]
-    from sklearn import linear_model
     model = None
     if verbose == 1:
         print(method + ' method will be used')
@@ -614,8 +628,9 @@ def auto_lrg(x, y, method='ols', fit_params=False, alphas=None, logspace_params=
 
 
 class hybrid:
-    def __init__(self, lin_model=None, xgb_model=None, task='reg', lrg_method='ols', alphas=None, logspace_params=None,
-                 cv=10, max_iter=1000, xgb_params=None, weight=None):
+    def __init__(self, lin_model=None, xgb_model=None, task: str = "reg", lrg_method: str = "ols", alphas=None,
+                 logspace_params=None, cv: float = 10, max_iter: int = 1000, xgb_params: dict = None,
+                 weight: list = None):
         super(hybrid, self).__init__()
         self.task = task
         self.lrg_method = lrg_method
@@ -628,7 +643,8 @@ class hybrid:
         self.lin_model = lin_model
         self.xgb_model = xgb_model
 
-    def fit(self, x_train, y_train, x_valid, y_valid):
+    def fit(self, x_train: pd.DataFrame, y_train: pd.Series | pd.DataFrame, x_valid: pd.DataFrame,
+            y_valid: pd.Series | pd.DataFrame):
         if self.xgb_params is None:
             est = 800
             eta = 0.0421
@@ -662,7 +678,7 @@ class hybrid:
         self.lin_model = auto_lrg(x_train, y_train, method=self.lrg_method, alphas=self.alphas,
                                   logspace_params=self.logspace_params, cv=self.cv, max_iter=self.max_iter)
 
-    def predict(self, x_test):
+    def predict(self, x_test: pd.DataFrame) -> list:
         if self.weight is None:
             self.weight = [0.4, 0.6]
         pred_x = self.xgb_model.predict(x_test)
@@ -673,11 +689,11 @@ class hybrid:
         # print(pred[0:5])
         return pred
 
-    def save(self, target_dir):
+    def save(self, target_dir: str):
         pickle.dump(self.lin_model, file=open(target_dir + '/linear.pkl', 'wb'))
         pickle.dump(self.xgb_model, file=open(target_dir + '/xgb.pkl', 'wb'))
 
-    def load(self, target_dir):
+    def load(self, target_dir: str):
         with open(target_dir + "/linear.pkl", "rb") as file:
             self.lin_model = pickle.load(file)
         file.close()
@@ -698,8 +714,9 @@ class hybrid:
         print(c)
 
 
-def auto_lgbm(x_train, y_train, x_valid, y_valid, early_stopping=30, verbose_eval=20, lgb_params=None,
-              num_boost_round=1000, evals_result=None):
+def auto_lgbm(x_train: pd.DataFrame, y_train: pd.Series | pd.DataFrame, x_valid: pd.DataFrame,
+              y_valid: pd.Series | pd.DataFrame, early_stopping: int = 30, verbose_eval: int = 20,
+              lgb_params: dict = None, num_boost_round: int = 1000, evals_result: dict = None):
     if evals_result is None:
         evals_result = {}
     if lgb_params is None:
@@ -734,7 +751,7 @@ def auto_lgbm(x_train, y_train, x_valid, y_valid, early_stopping=30, verbose_eva
 ####################################################
 # 评估指标
 ####################################################
-def cov(x, y):
+def cov(x: np.array, y: np.array) -> float:
     x_bar = x.mean()
     y_bar = y.mean()
     cov_xy = 0
@@ -744,7 +761,7 @@ def cov(x, y):
     return cov_xy
 
 
-def pearson_corr(x, y):
+def pearson_corr(x, y) -> float:
     np.array(x)
     np.array(y)
     x_std = x.std()
@@ -754,7 +771,8 @@ def pearson_corr(x, y):
     return cor
 
 
-def ic_ana(pred, y, groupby=None, plot=True, freq=30):
+def ic_ana(pred: pd.Series | pd.DataFrame, y: pd.DataFrame | pd.Series, groupby: str = None, plot: bool = True,
+           freq: int = 30) -> tuple[float, float, float, float]:
     """
     :param pred: pd.DataFrame or pd.Series, 预测值
     :param y: pd.DataFrame or pd.Series, 真实值
@@ -785,7 +803,7 @@ def ic_ana(pred, y, groupby=None, plot=True, freq=30):
 ####################################################
 # 时间序列分析
 ####################################################
-def roll_mean(X, label, windows):
+def roll_mean(X: pd.DataFrame, label: str, windows: int) -> pd.DataFrame:
     """
     :param X: pd.DataFrame, 输入的数据
     :param label: str, 目标值的列名
@@ -804,7 +822,7 @@ def roll_mean(X, label, windows):
     return X
 
 
-def time_plot(X, label):
+def time_plot(X: pd.DataFrame, label: str) -> None:
     """
     :param X: pd.DataFrame, 输入的数据
     :param label: str, 目标值所在列名
@@ -821,7 +839,8 @@ def time_plot(X, label):
     del X_copy
 
 
-def series_plot(y, pred, fore, title=None, y_label='value', pred_label='pred', fore_label='fore'):
+def series_plot(y: pd.DataFrame | pd.Series, pred: pd.DataFrame | pd.Series, fore: pd.DataFrame | pd.Series,
+                title: str = None, y_label: str = "value", pred_label: str = "pred", fore_label: str = "fore") -> None:
     """
     :param y: pd.DataFrame or pd.Series, 真实值
     :param pred: pd.DataFrame or pd.Series, 预测值（测试集）
@@ -839,7 +858,7 @@ def series_plot(y, pred, fore, title=None, y_label='value', pred_label='pred', f
     plt.show()
 
 
-def make_trend(X, order, constant=False, drop_terms=True):
+def make_trend(X: pd.DataFrame, order: int, constant: bool = False, drop_terms: bool = True) -> pd.DataFrame:
     from statsmodels.tsa.deterministic import DeterministicProcess
     dp = DeterministicProcess(
         index=X.index,  # dates from the training data
@@ -852,7 +871,7 @@ def make_trend(X, order, constant=False, drop_terms=True):
     return X.join(trend)
 
 
-def plot_periodogram(X, time_freq='day', detrend='linear', ax=None):
+def plot_periodogram(X: pd.DataFrame | pd.Series, time_freq: str = "3sec", detrend: str = "linear", ax=None) -> None:
     """
     The periodogram tells you the strength of the frequencies in a time series.
 
@@ -939,7 +958,7 @@ def plot_periodogram(X, time_freq='day', detrend='linear', ax=None):
     plt.show()
 
 
-def make_fourier_features(X, freq, order, name=None, time=None):
+def make_fourier_features(X: pd.DataFrame, freq: int, order: int, name: str = None, time: str = None) -> pd.DataFrame:
     """
     傅里叶特征：假设时间为t, 频率为f, 则特征 k = (2 * pi / f) * t
 
@@ -970,7 +989,7 @@ def make_fourier_features(X, freq, order, name=None, time=None):
     return X.join(fourier)
 
 
-def lagplot(x, y=None, lag=1, standardize=False, ax=None):
+def lagplot(x, y=None, lag: int = 1, standardize: bool = False, ax=None):
     from matplotlib.offsetbox import AnchoredText
     x_ = x.shift(lag)
     if standardize:
@@ -1005,7 +1024,7 @@ def lagplot(x, y=None, lag=1, standardize=False, ax=None):
     return ax
 
 
-def lag_plot(x, lags, y=None, nrows=2, **kwargs):
+def lag_plot(x: pd.DataFrame, lags: int, y=None, nrows: int = 2, **kwargs) -> None:
     """
     :param x: pd.DataFrame, 输入的数据集，须包含目标值
     :param lags: int, 滞后的阶数
@@ -1033,7 +1052,8 @@ def lag_plot(x, lags, y=None, nrows=2, **kwargs):
     plt.show()
 
 
-def make_lags(X, data=None, lags=1, start=1, col=None, name=None):
+def make_lags(X: pd.DataFrame, data: pd.DataFrame | pd.Series | None, lags: int = 1, start: int = 1,
+              col: list[str] = None, name=None) -> pd.DataFrame:
     """
     :param X: pd.DataFrame, 整个数据集
     :param data: pd.Series or pd.DataFrame, 目标列, 不一定要在X中
@@ -1062,7 +1082,7 @@ def make_lags(X, data=None, lags=1, start=1, col=None, name=None):
     return X
 
 
-def auto_ts_ana(X, label, freq, windows=5, lags=12):
+def auto_ts_ana(X: pd.DataFrame, label: str, freq: str = "3sec", windows: int = 5, lags: int = 12) -> None:
     """
     :param X: pd.DataFrame, 包含目标值的整个数据集
     :param label: str, 目标值所在列名

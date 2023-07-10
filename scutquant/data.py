@@ -134,7 +134,7 @@ def get_financial_data(index_code="000300", sleep=0.01):
 """
 
 
-def get_financial_data(index_code="000300"):
+def get_fundamental_data(index_code="000300"):
     df = pd.DataFrame()
     cons = ak.index_stock_cons(symbol=index_code)
     for code in cons["品种代码"]:

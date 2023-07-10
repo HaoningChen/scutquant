@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 
 
-def sharpe_ratio(ret, rf=0.03, freq=1.0):
+def sharpe_ratio(ret: pd.Series | pd.DataFrame, rf: float = 0.03, freq: float = 1.0) -> float:
     """
     夏普比率（事后夏普比率，使用实际收益计算）
 
@@ -18,7 +18,7 @@ def sharpe_ratio(ret, rf=0.03, freq=1.0):
     return (ret_copy.mean() - rf) / ret_copy.std()
 
 
-def sortino_ratio(ret, benchmark):
+def sortino_ratio(ret: pd.Series | pd.DataFrame, benchmark: pd.Series | pd.DataFrame) -> float:
     """
     索提诺比率
 
@@ -32,7 +32,7 @@ def sortino_ratio(ret, benchmark):
     return (ret.mean() - benchmark_copy.mean()) / sd
 
 
-def information_ratio(ret, benchmark):
+def information_ratio(ret: pd.Series | pd.DataFrame, benchmark: pd.Series | pd.DataFrame) -> float:
     """
     信息比率（与夏普比率的区别是使用指数收益作为对照的标准）
 
@@ -45,7 +45,7 @@ def information_ratio(ret, benchmark):
     return (ret_copy.mean() - benchmark_copy.mean()) / ret_copy.std()
 
 
-def calculate_mdd(data):
+def calculate_mdd(data: pd.Series) -> pd.Series:
     """
     :param data: pd.Series
     :return: pd.Series
@@ -53,7 +53,8 @@ def calculate_mdd(data):
     return data - data.cummax()
 
 
-def plot(data, label, title=None, xlabel=None, ylabel=None, figsize=None, mode="plot"):
+def plot(data, label, title: str = None, xlabel: str = None, ylabel: str = None, figsize=None,
+         mode: str = "plot") -> None:
     """
     :param data: 需要绘制的数据
     :param label: 数据标签
@@ -87,7 +88,7 @@ def plot(data, label, title=None, xlabel=None, ylabel=None, figsize=None, mode="
     plt.show()
 
 
-def accuracy(pred, y, sign=">="):
+def accuracy(pred: pd.Series, y: pd.Series, sign: str = ">=") -> float:
     """
     eg:
     y = pd.Series([-1, -1, 2, 3])
@@ -108,8 +109,8 @@ def accuracy(pred, y, sign=">="):
     return len(data_true) / len(data)
 
 
-def report_all(user_account, benchmark, show_raw_value=False, excess_return=True, risk=True, turnover=True,
-               rf=0.03, freq=1, time=None, figsize=(10, 6)):
+def report_all(user_account, benchmark, show_raw_value: bool = False, excess_return: bool = True, risk: bool = True,
+               turnover: bool = True, rf: float = 0.03, freq: float = 1, time=None, figsize: tuple = (10, 6)) -> None:
     """
 
     :param user_account: account类
@@ -158,8 +159,10 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
     inf_ratio = information_ratio(acc_ret, ben_ret)
 
     print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / (len(ret) * freq)) - 1)  # (1 + total_ret) ** (1/years) - 1
+    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / (len(ret) * freq)) - 1)  # (1 + total_ret) ** (1/years) - 1
     # print("years:", 252 / len(ret))
     print('Annualized Volatility:', ret.std() * ((252 / len(ret) / freq) ** 0.5))  # ret.std()*(x **0.5), x为一年有多少tick
+    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / (len(ret) * freq)) - 1)
     print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / (len(ret) * freq)) - 1)
     print('Annualized Volatility(Benchmark):', ben.std() * ((252 / len(ret) / freq) ** 0.5), '\n')
     print('Cumulative Rate of Return:', acc_ret[-1])
@@ -200,7 +203,8 @@ def report_all(user_account, benchmark, show_raw_value=False, excess_return=True
         plot([risk], label=['turnover'], title='Turnover', figsize=figsize)
 
 
-def group_return_ana(pred, y_true, n=5, groupby='time', figsize=(10, 6)):
+def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int = 5, groupby: str = "time",
+                     figsize: tuple = (10, 6)) -> None:
     """
     因子对股票是否有良好的区分度, 若有, 则应出现明显的分层效应(即单调性)
     此处的收益为因子收益率，非真实收益率
