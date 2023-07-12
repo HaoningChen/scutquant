@@ -47,14 +47,14 @@ from scipy.stats import norm
 from joblib import Parallel, delayed
 
 
-def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str):
+def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str) -> pd.Series:
     """
     考虑最简单的单指数模型: R = β * Rm + α, 其中α应为0, β = cov(R, Rm) / var(Rm)
     使用rolling方法避免在回测中出现数据泄露(实盘不会出现这个问题)
     """
-    cov = concat_data[feature].rolling(60, min_periods=30).cov(concat_data[label])
-    var = concat_data[feature].rolling(60, min_periods=30).var()
-    beta = cov / var
+    cov: pd.Series = concat_data[feature].rolling(60, min_periods=30).cov(concat_data[label])
+    var: pd.Series = concat_data[feature].rolling(60, min_periods=30).var()
+    beta: pd.Series = cov / var
     return beta * concat_data[feature]
 
 
@@ -267,7 +267,8 @@ def CORR(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, feature: str, lab
         windows = [5, 10, 20, 30, 60]
     features = pd.DataFrame()
     for w in windows:
-        features[name + str(w)] = data_group.apply(lambda x: calc_corr(x, feature, label, window=w))
+        features[name + str(w)] = \
+            data_group.apply(lambda x: calc_corr(x, feature, label, window=w)).reset_index(0, drop=True)
     return pd.concat([X, features.sort_index()], axis=1)
 
 
