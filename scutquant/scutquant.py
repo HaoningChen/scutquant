@@ -786,6 +786,8 @@ def ic_ana(pred: pd.Series | pd.DataFrame, y: pd.DataFrame | pd.Series, groupby:
     ic = concat_data.groupby(groupby).apply(lambda x: x.iloc[:, 0].corr(x.iloc[:, 1]))
     rank_ic = concat_data.groupby(groupby).apply(lambda x: x.iloc[:, 0].corr(x.iloc[:, 1], method='spearman'))
     if plot:
+        ic.index = pd.to_datetime(ic.index)
+        rank_ic.index = pd.to_datetime(rank_ic.index)
         # 默认freq为30的情况下，画出来的IC是月均IC
         plt.figure(figsize=(10, 6))
         plt.plot(ic.rolling(freq).mean(), label='ic', marker='o')
