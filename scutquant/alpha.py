@@ -233,6 +233,16 @@ def ts_CORR(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: 
     return pd.concat([X, features], axis=1)
 
 
+def ts_BETA(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
+            name: str = "ts_BETA") -> pd.DataFrame:
+    features = pd.DataFrame()
+    for w in windows:
+        cov = data1_group.transform(lambda x: x.rolling(w).cov(data2))
+        var = data1_group.transform(lambda x: x.rolling(w).var())
+        features[name + str(w)] = cov / var
+    return pd.concat([X, features], axis=1)
+
+
 def calc_corr(data: pd.DataFrame, feature: str, label: str, window=None):
     corr = data[feature].rolling(window).corr(data[label])
     return corr
