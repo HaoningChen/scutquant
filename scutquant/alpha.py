@@ -690,3 +690,33 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None, n_j
     data_neu = pd.concat(factor_neu, axis=1)
     del factor_neu
     return pd.concat([data_neu, concat_data[other_cols]], axis=1)
+
+
+def market_neutralize(x: pd.Series) -> pd.Series:
+    """
+    市场组合中性化:
+    (1) 对所有股票减去其截面上的因子均值
+    (2) 在(1)之后, 对每支股票除以截面上的因子值绝对值之和
+
+    这样处理后每支股票会获得一个权重, 代表着资金的方向和数量(例如0.5代表半仓做多, -0.25代表1/4仓做空),
+    且截面上的权重之和为0, 绝对值之和为1.
+    """
+    mean = x.groupby(level=0).mean()
+    x -= mean
+    abs_sum = abs(x).groupby(level=0).sum()
+    x /= abs_sum
+    return x
+
+
+def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool = False) -> pd.Series:
+    x_neu = market_neutralize(feature)
+    if long_only:
+        x_neu[x_neu < 0] = 0  # 考虑到A股有做空限制, 因此将权重为负的股票(即做空的股票)的权重调整为0(即纯多头)
+    X = pd.DataFrame({"feature": x_neu, "label": label})
+    X.dropna(inplace=True)
+    X["factor_return"] = X["feature"] * X["label"]
+    daily_return = X["factor_return"].groupby("datetime").sum()
+    daily_return += 1
+    portfolio = daily_return.cumprod()
+    portfolio.index = pd.to_datetime(portfolio.index)
+    return portfolio
