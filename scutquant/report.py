@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LinearRegression
 
 
 def sharpe_ratio(ret: pd.Series | pd.DataFrame, rf: float = 0.03, freq: float = 1.0) -> float:
@@ -47,10 +46,20 @@ def information_ratio(ret: pd.Series | pd.DataFrame, benchmark: pd.Series | pd.D
 
 def calculate_mdd(data: pd.Series) -> pd.Series:
     """
-    :param data: pd.Series
-    :return: pd.Series
+    :param data: 累计收益率序列
+    :return: 从开始到目前的回撤
     """
-    return data - data.cummax()
+    return (data - data.cummax()) / data.cummax()
+
+
+def annualized_return(data: pd.Series, freq: float = 1) -> float:
+    # (1 + total_ret) ** (1/years) - 1
+    return (1 + data.values[-1]) ** (252 / (len(data) * freq)) - 1
+
+
+def annualized_volatility(data: pd.Series, freq: float = 1) -> float:
+    # ret.std()*(x **0.5), x为一年有多少tick
+    return data.std() * ((252 / len(data) / freq) ** 0.5)
 
 
 def plot(data, label, title: str = None, xlabel: str = None, ylabel: str = None, figsize=None,
@@ -136,7 +145,7 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
     ben_ret = []
     days = 0
     for i in range(len(acc_val)):
-        acc_ret.append(acc_val[i] / init_val_acc - 1)
+        acc_ret.append(acc_val[i] / init_val_acc - 1)  # 当前净值相对于初始值的收益率
         ben_ret.append(ben_val[i] / init_val_ben - 1)
     excess_ret = []
 
@@ -146,37 +155,42 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
             days += 1
     days /= len(acc_ret)
 
-    acc_mdd = calculate_mdd(pd.Series(acc_ret))
-    ben_mdd = calculate_mdd(pd.Series(ben_ret))
+    acc_mdd = calculate_mdd(pd.Series(acc_ret) + 1)
+    ben_mdd = calculate_mdd(pd.Series(ben_ret) + 1)
 
     ret = pd.Series(acc_ret)  # 累计收益率
     ben = pd.Series(ben_ret)  # benchmark的累计收益率
-    x = ben.values.reshape(-1, 1)
-    model = LinearRegression().fit(x, ret)
+
+    ann_return = annualized_return(ret, freq=freq)
+    ann_std = annualized_volatility(ret, freq=freq)
+    ben_ann_return = annualized_return(ben, freq=freq)
+    ben_ann_std = annualized_volatility(ben, freq=freq)
+
+    beta = ret.cov(ben) / ben.var()
+    alpha = ret.mean() - beta * ben.mean()
+    epsilon = pd.Series(ret - beta * ben - alpha).std()
 
     sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq * 365)
     sortino = sortino_ratio(acc_ret, ben_ret)
     inf_ratio = information_ratio(acc_ret, ben_ret)
 
-    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / (len(ret) * freq)) - 1)  # (1 + total_ret) ** (1/years) - 1
-    print('Annualized Return:', (1 + acc_ret[-1]) ** (252 / (len(ret) * freq)) - 1)  # (1 + total_ret) ** (1/years) - 1
+    print('Annualized Return:', ann_return)  # (1 + total_ret) ** (1/years) - 1
     # print("years:", 252 / len(ret))
-    print('Annualized Volatility:', ret.std() * ((252 / len(ret) / freq) ** 0.5))  # ret.std()*(x **0.5), x为一年有多少tick
-    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / (len(ret) * freq)) - 1)
-    print('Annualized Return(Benchmark):', (1 + ben_ret[-1]) ** (252 / (len(ret) * freq)) - 1)
-    print('Annualized Volatility(Benchmark):', ben.std() * ((252 / len(ret) / freq) ** 0.5), '\n')
+    print('Annualized Volatility:', ann_std)  # ret.std()*(x **0.5), x为一年有多少tick
+    print('Annualized Return(Benchmark):', ben_ann_return)
+    print('Annualized Volatility(Benchmark):', ben_ann_std, '\n')
     print('Cumulative Rate of Return:', acc_ret[-1])
     print('Cumulative Rate of Return(Benchmark):', ben_ret[-1])
     print('Cumulative Excess Rate of Return:', excess_ret[-1], '\n')
     print('Max Drawdown:', acc_mdd.min())
     print('Max Drawdown(Benchmark):', ben_mdd.min())
-    print('Max Drawdown(Excess Return):', calculate_mdd(pd.Series(excess_ret)).min(), '\n')
+    print('Max Drawdown(Excess Return):', calculate_mdd(pd.Series(excess_ret) + 1).min(), '\n')
     print('Sharpe Ratio:', sharpe)
     print('Sortino Ratio:', sortino)
     print('Information Ratio:', inf_ratio, '\n')
-    print('Beta:', model.coef_[0])
-    print("Alpha:", model.intercept_)
-    print("Epsilon:", (ret - model.predict(x)).std())
+    print('Beta:', beta)
+    print("Alpha:", alpha)
+    print("Epsilon:", epsilon)
     print('Profitable Days(%):', days)
 
     if show_raw_value:
