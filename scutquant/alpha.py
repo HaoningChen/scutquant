@@ -712,6 +712,7 @@ def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool =
     x_neu = market_neutralize(feature)
     if long_only:
         x_neu[x_neu < 0] = 0  # 考虑到A股有做空限制, 因此将权重为负的股票(即做空的股票)的权重调整为0(即纯多头)
+        x_neu *= 2
     X = pd.DataFrame({"feature": x_neu, "label": label})
     X.dropna(inplace=True)
     X["factor_return"] = X["feature"] * X["label"]
