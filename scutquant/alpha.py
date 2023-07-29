@@ -692,7 +692,7 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None, n_j
     return pd.concat([data_neu, concat_data[other_cols]], axis=1)
 
 
-def market_neutralize(x: pd.Series) -> pd.Series:
+def market_neutralize(x: pd.Series, long_only=False) -> pd.Series:
     """
     市场组合中性化:
     (1) 对所有股票减去其截面上的因子均值
@@ -703,16 +703,17 @@ def market_neutralize(x: pd.Series) -> pd.Series:
     """
     mean = x.groupby(level=0).mean()
     x -= mean
-    abs_sum = abs(x).groupby(level=0).sum()
+    if long_only:  # 考虑到A股有做空限制, 因此将权重为负的股票(即做空的股票)的权重调整为0(即纯多头), 并相应调整多头的权重
+        x[x.values < 0] = 0
+        abs_sum = x[x.values > 0].groupby(level=0).sum()
+    else:
+        abs_sum = abs(x).groupby(level=0).sum()
     x /= abs_sum
     return x
 
 
 def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool = False) -> pd.Series:
-    x_neu = market_neutralize(feature)
-    if long_only:
-        x_neu[x_neu < 0] = 0  # 考虑到A股有做空限制, 因此将权重为负的股票(即做空的股票)的权重调整为0(即纯多头)
-        x_neu *= 2
+    x_neu = market_neutralize(feature, long_only=long_only)
     X = pd.DataFrame({"feature": x_neu, "label": label})
     X.dropna(inplace=True)
     X["factor_return"] = X["feature"] * X["label"]
