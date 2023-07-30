@@ -238,7 +238,7 @@ def ts_BETA(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: 
     features = pd.DataFrame()
     for w in windows:
         cov = data1_group.transform(lambda x: x.rolling(w).cov(data2))
-        var = data1_group.transform(lambda x: x.rolling(w).var())
+        var = data2.rolling(w).var()
         features[name + str(w)] = cov / var
     return pd.concat([X, features], axis=1)
 
