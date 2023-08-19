@@ -10,6 +10,20 @@ akshare的数据并非100%准确！如果有更好的数据源请使用自己的
 """
 
 
+def get_stock_data(instruments: list, freq: str = "daily", start: str = "19700101", end: str = "20230731",
+                   adjust: str = "") -> pd.DataFrame:
+    stock_data = pd.DataFrame()
+    for i in instruments:
+        single_stock = ak.stock_zh_a_hist(symbol=i[0: 6], period=freq, start_date=start, end_date=end, adjust=adjust)
+        single_stock["instrument"] = i
+        stock_data = pd.concat([stock_data, single_stock], axis=0)
+    stock_data.columns = ["datetime", "open", "close", "high", "low", "volume", "amount", "amplitude",
+                          "pct_chg", "price_chg", "turnover", "instrument"]
+    stock_data["datetime"] = pd.to_datetime(stock_data["datetime"])
+    stock_data.set_index(["datetime", "instrument"], inplace=True)
+    return stock_data.sort_index()
+
+
 def get_index_stock_cons(index_code='000300', freq="daily", start="20230330", end="20230331", adjust=""):
     """
     注：此函数还在不断完善中, 尤其是股票代码一块，非沪深300股票池的股票, 代码后缀可能会出错
@@ -26,12 +40,12 @@ def get_index_stock_cons(index_code='000300', freq="daily", start="20230330", en
     df = pd.DataFrame()
     for code in cons["品种代码"]:
         stock_data = ak.stock_zh_a_hist(symbol=code, period=freq, start_date=start, end_date=end, adjust=adjust)
-        stock_data["code"] = code + ".SH" if code[0] == "6" else code + ".SZ"  # 根据股票代码的第一个数字区分其属于上交所还是深交所
+        stock_data["instrument"] = code + ".SH" if code[0] == "6" else code + ".SZ"  # 根据股票代码的第一个数字区分其属于上交所还是深交所
         df = pd.concat([df, stock_data], axis=0)
-    df = df.set_index(["日期", "code"]).sort_index()
-    df.index.names = ["datetime", "code"]
+    df = df.set_index(["日期", "instrument"]).sort_index()
+    df.index.names = ["datetime", "instrument"]
     df = df[~df.index.duplicated()]
-    df.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pcg_chg", "turnover"]
+    df.columns = ["open", "close", "high", "low", "volume", "amount", "amplitude", "price_chg", "pct_chg", "turnover"]
     return df
 
 
@@ -185,3 +199,18 @@ def get_high_freq_futures(instrument="PTA", freq=1):
     all_data.dropna(axis=1, how="all", inplace=True)
     all_data.set_index(["datetime", "instrument"], inplace=True)
     return all_data.sort_index()
+
+
+def get_stock_news(instrument_list: list) -> pd.DataFrame:
+    all_news = pd.DataFrame(())
+    for instrument in instrument_list:
+        i_news = ak.stock_news_em(instrument[0: 6])
+        i_news["关键词"] = instrument
+        # print(i_news)
+        all_news = pd.concat([all_news, i_news], axis=0)
+    all_news["发布时间"] = pd.to_datetime(all_news["发布时间"]).dt.strftime("%Y-%m-%d")
+    all_news["发布时间"] = pd.to_datetime(all_news["发布时间"])
+    all_news.set_index(["发布时间", "关键词"], inplace=True)
+    all_news.index.names = ["datetime", "instrument"]
+    all_news.columns = ["title", "content", "resource", "link"]
+    return all_news.sort_index()
