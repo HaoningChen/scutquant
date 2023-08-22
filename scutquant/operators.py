@@ -189,6 +189,28 @@ def ts_beta(data: pd.DataFrame, feature: str, label: str, n_period: int) -> pd.S
     return cov / var
 
 
+def ts_pos_count(data: pd.Series, n_period: int) -> pd.Series:
+    """
+    Returns the number of days when data is bigger than 0 for the past n_period days
+
+    psy = ts_pos_count(ts_delta(close, 1), d) / d * 100  # 一个计算d日psy指标的例子, 比alpha模块的对应函数简洁了不少
+    """
+    data_copy = data.copy()
+    data_copy[data_copy > 0] = 1
+    data_copy[data_copy < 0] = 0
+    return data_copy.groupby(level=1).transform(lambda x: x.rolling(n_period).sum())
+
+
+def ts_neg_count(data: pd.Series, n_period: int) -> pd.Series:
+    """
+    Returns the number of days when data is smaller than 0 for the past n_period days
+    """
+    data_copy = data.copy()
+    data_copy[data_copy > 0] = 0
+    data_copy[data_copy < 0] = 1
+    return data_copy.groupby(level=1).transform(lambda x: x.rolling(n_period).sum())
+
+
 def cs_rank(data: pd.Series) -> pd.Series:
     """
     Ranks the input among all the instruments and returns an equally distributed number between 0.0 and 1.0.
