@@ -19,7 +19,7 @@ example:
 
 from operators import * 
 
-factor = cs_zscore(ts_rank(ts_corr(df, "close", "value", 15), 15))
+factor = cs_zscore(ts_rank(ts_corr(df, "close", "volume", 15), 15))
 
 """
 
