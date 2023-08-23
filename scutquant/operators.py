@@ -66,6 +66,10 @@ def ts_mean(data: pd.Series, n_period: int) -> pd.Series:
     return data.groupby(level=1).transform(lambda x: x.rolling(n_period).mean())
 
 
+def ts_ewma(data: pd.Series, a: float = 0.94) -> pd.Series:
+    return data.groupby(level=1).transform(lambda x: x.ewm(alpha=a).mean())
+
+
 def ts_std(data: pd.Series, n_period: int) -> pd.Series:
     """
     Returns standard deviation of data for the past n_period days
@@ -123,6 +127,10 @@ def ts_zscore(data: pd.Series, n_period: int) -> pd.Series:
     (data - ts_mean(data,n_period)) / ts_std(data,n_period)
     """
     return (data - ts_mean(data, n_period)) / ts_std(data, n_period)
+
+
+def ts_scale(data: pd.Series, n_period: int) -> pd.Series:
+    return (data - ts_min(data, n_period)) / (ts_max(data, n_period) - ts_min(data, n_period))
 
 
 def ts_sharpe(data: pd.Series, n_period: int) -> pd.Series:
@@ -189,6 +197,35 @@ def ts_beta(data: pd.DataFrame, feature: str, label: str, n_period: int) -> pd.S
     return cov / var
 
 
+def ts_regression(data: pd.DataFrame, feature: str, label: str, n_periods: int, rettype: int = 0) -> pd.Series:
+    """
+    Returns results of linear model y = beta * x + alpha + resid
+
+    :param data:
+    :param feature:
+    :param label:
+    :param n_periods:
+    :param rettype: 0 for resid, 1 for beta, 2 for alpha, 3 for y_hat, 4 for R^2
+    :return:
+    """
+    beta = ts_beta(data, feature, label, n_periods)
+    alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
+    predict: pd.Series = beta * data[feature] + alpha
+    resid: pd.Series = data[label] - predict
+    if rettype == 0:
+        return resid
+    elif rettype == 1:
+        return beta
+    elif rettype == 2:
+        return alpha
+    elif rettype == 3:
+        return predict
+    else:
+        predict.name = "predict"
+        concat_df = pd.concat([predict, data[label]], axis=1)
+        return ts_corr(concat_df, "predict", label, n_periods) ** 2
+
+
 def ts_pos_count(data: pd.Series, n_period: int) -> pd.Series:
     """
     Returns the number of days when data is bigger than 0 for the past n_period days
@@ -226,9 +263,21 @@ def cs_zscore(data: pd.Series) -> pd.Series:
     return data.groupby(level=0).transform(lambda x: (x - x.mean()) / x.std())
 
 
+def cs_scale(data: pd.Series) -> pd.Series:
+    return data.groupby(level=0).transform(lambda x: (x - x.min()) / (x.max() - x.min()))
+
+
 def cs_mean(data: pd.Series) -> pd.Series:
     """
     This function is not for regular alphas which have two index levels. It calculates the mean value of all instruments
     on a particular time tick. You may use this for calculating the relationship between single instrument and the index
     """
     return data.groupby(level=0).transform(lambda x: x.mean())
+
+
+def sign(data: pd.Series) -> pd.Series:
+    return data.transform(lambda x: x / abs(x) if x != 0 else 0)
+
+
+def sign_power(data: pd.Series, p) -> pd.Series:
+    return sign(data) * (abs(data) ** p)
