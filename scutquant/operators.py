@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 """
 
@@ -13,6 +14,7 @@ import pandas as pd
 
 scutquant的alpha模块用的是qlib的思路, 而为了让用户按照worldquant的方式构造自己的因子, 本模块应运而生
 在本模块中, ts是对每个instrument在时序上计算, 而cs是在截面上计算, 所有返回结果都是pd.Series
+该模块提供了更加丰富的算子, 但批量计算因子时速度远远慢于alpha模块, 主要原因是该模块需要反复地groupby, 而alpha模块算一类因子只用groupby一次
 未来这部分可能会合并到alpha模块中, 让整个架构看起来不那么臃肿, 但也要考虑到合并后是否方便维护的问题
 
 example:  
@@ -129,6 +131,11 @@ def ts_zscore(data: pd.Series, n_period: int) -> pd.Series:
     return (data - ts_mean(data, n_period)) / ts_std(data, n_period)
 
 
+def ts_robust_zscore(data: pd.Series, n_period: int) -> pd.Series:
+    med = ts_median(data, n_period)
+    return (data - med) / (abs(med) * 1.4826)
+
+
 def ts_scale(data: pd.Series, n_period: int) -> pd.Series:
     return (data - ts_min(data, n_period)) / (ts_max(data, n_period) - ts_min(data, n_period))
 
@@ -138,6 +145,13 @@ def ts_sharpe(data: pd.Series, n_period: int) -> pd.Series:
     Return sharpe ratio ts_mean(data, n_period) / ts_std(data, n_period)
     """
     return ts_mean(data, n_period) / ts_std(data, n_period)
+
+
+def ts_av_diff(data: pd.Series, n_period: int) -> pd.Series:
+    """
+    Returns data - ts_mean(data, n_period)
+    """
+    return data - ts_mean(data, n_period)
 
 
 def ts_max_diff(data: pd.Series, n_period: int) -> pd.Series:
@@ -263,6 +277,11 @@ def cs_zscore(data: pd.Series) -> pd.Series:
     return data.groupby(level=0).transform(lambda x: (x - x.mean()) / x.std())
 
 
+def cs_robust_zscore(data: pd.Series) -> pd.Series:
+    med = data.groupby(level=0).median()
+    return (data - med) / (abs(med) * 1.4826)
+
+
 def cs_scale(data: pd.Series) -> pd.Series:
     return data.groupby(level=0).transform(lambda x: (x - x.min()) / (x.max() - x.min()))
 
@@ -276,8 +295,34 @@ def cs_mean(data: pd.Series) -> pd.Series:
 
 
 def sign(data: pd.Series) -> pd.Series:
-    return data.transform(lambda x: x / abs(x) if x != 0 else 0)
+    return pd.Series(np.sign(data.values), index=data.index)
 
 
-def sign_power(data: pd.Series, p) -> pd.Series:
+def sign_power(data: pd.Series, p: float) -> pd.Series:
     return sign(data) * (abs(data) ** p)
+
+
+def log(data: pd.Series) -> pd.Series:
+    return pd.Series(np.log(data.values), index=data.index)
+
+
+def tanh(data: pd.Series) -> pd.Series:
+    return pd.Series(np.tanh(data.values), index=data.index)
+
+
+def sigmoid(data: pd.Series) -> pd.Series:
+    return pd.Series(1 / (1 + np.exp(-data.values)), index=data.index)
+
+
+def bigger(data1: pd.Series, data2: pd.Series) -> pd.Series:
+    """
+    Returns the bigger value of data1 and data2
+    """
+    return data1.where(data1 > data2, data2)
+
+
+def smaller(data1: pd.Series, data2: pd.Series) -> pd.Series:
+    """
+    Returns the smaller value of data1 and data2
+    """
+    return data1.where(data1 < data2, data1)
