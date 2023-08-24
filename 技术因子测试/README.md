@@ -1,8 +1,7 @@
 ## 关于测试  
 股票池: 沪深300  
-测试时间: 2006-01-01~2022-11-30(剔除缺失值)  
+测试时间: 2006-01-01~2023-06-20(剔除缺失值)  
 
 ## 结论  
-记录了截止当前版本的技术因子表现(源代码见[scutquant.alpha.make_factors()](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py))  
-因子构造有一部分参考了qlib的alpha158, 并把alpha158的表达式转化成显性的python代码(虽然qlib的算子确实方便了构建因子, 但是耦合度太高了)  
-在因子构造时加入截面的信息(例如IDX系列)可能会提高因子质量
+记录了截止当前版本的技术因子表现(源代码见[scutquant.alpha.qlib158()](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py))  
+Qlib的alpha158的性能主要来自除单位的操作(对于price类因子除以收盘价, 对于volume类因子除以交易量), 换言之, 因子表达式本身不见得有多高明
