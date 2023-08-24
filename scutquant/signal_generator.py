@@ -13,13 +13,7 @@ def update_x(x1: pd.DataFrame, x2: pd.DataFrame, n: int) -> tuple[pd.DataFrame, 
     return x, get_predict
 
 
-def update_factors(x: pd.DataFrame, f_kwargs: dict) -> dict:
-    # 更新生成因子的kwargs
-    f_kwargs["data"] = x
-    return f_kwargs
-
-
-def simulate(x: pd.DataFrame, current_time, get_predict: bool, factor_kwargs: dict, ymean, ystd, model, strategy,
+def simulate(x: pd.DataFrame, current_time, get_predict: bool, ymean, ystd, model, strategy,
              cash_available: float = None, price: str = "price", volume: str = "volume"):
     """
     # 用于模拟实盘, 即动态更新因子和预测值
@@ -27,7 +21,6 @@ def simulate(x: pd.DataFrame, current_time, get_predict: bool, factor_kwargs: di
     :param x: 用于构建因子的数据，滚动更新（输入的是更新过的数据）, 需要额外增加price(shift(-1))和volume(shift(-1))
     :param current_time: 当前时间
     :param get_predict: 根据当前x的长度决定是否构建因子并进行预测
-    :param factor_kwargs: 构建因子的kwargs
     :param ymean: 用于还原预测值的y_mean
     :param ystd: 用于还原预测值的y_std
     :param model: 用于预测的模型
@@ -39,8 +32,7 @@ def simulate(x: pd.DataFrame, current_time, get_predict: bool, factor_kwargs: di
     """
     from . import alpha
     if get_predict:
-        factor_kwargs = update_factors(x, factor_kwargs)
-        factors = alpha.make_factors(factor_kwargs)
+        factors = alpha.qlib158(x)
         factors -= x.groupby(x.index.names[1]).mean()
         factors /= x.groupby(x.index.names[1]).std()
         factors.clip(-3, 3, inplace=True)

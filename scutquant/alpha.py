@@ -1,698 +1,12 @@
-"""
-因子是用来解释超额收益的变量，分为alpha因子和风险因子(beta因子)。alpha因子旨在找出能解释市场异象的变量，而风险因子是宏观因素(系统性风险)的代理变量，二者并没有严格的区分
-此库包含的因子均为量价数据因子，属于技术分析流派，技术分析的前提条件是市场无效（依据有三：一是交易者非理性，二是存在套利限制，三是存在市场异象）
-
-因子构建流程：(1)首先根据表达式生成因子（即本库的功能），然后进行标准化得到因子暴露
-
-            PS:因子构建需要有依据（市场异象/已有的研究/自己发现的规律等，本库基于第二条构建）
-
-            (2)然后计算大类因子之间的相关系数（可以将大类下面的因子做简单平均）并决定是否正交化（当然也有研究指出这没有必要，而且在机器学习模型下这其实不影响结果）
-            (3)最后检验因子质量（用pearson corr或者mutual information等指标，对因子和目标值进行回归），剔除得分较低的因子
-
-            PS：构建因子之后的工作也就是第一、二次培训的内容，可以先用alpha.make_factors()生成因子，然后用scutquant.auto_process()完成剩下的流程
-
-因子检验方法（我怎么能够放心地使用我的因子）：
-    (1)截面回归，假设因子库（因子的集合）为X，目标值（一般为下期收益率）为y，回归方程 y = alpha + Beta * X，根据t统计量判断beta是否显著不为0.
-    该检验是检验单个因子是否显著，缺点是因子与收益率的关系未必是线性的，因此无法检验非线性关系的因子，同时它也没有考虑因子相互作用的情况，即交互项
-    (2)自相关性、分层效应、IC分析等: 参考 https://b23.tv/hDB4ZLW
-    (3)另一种t检验：已知IC均值ic, ICIR = ic/std(IC), 时间长度为n, 则 t = ic / (ICIR/sqrt(n))，该检验是检验整个因子库是否显著
-
-    PS: ic, ICIR等数据可以用scutquant.ic_ana()获得
-
-因子检验流程（自用）
-    (1)构建模型前：参考 因子构建流程 第3步
-    (2)构建模型后：计算IC, ICIR, RANK_IC, RANK_ICIR，完成以下工作：
-        1、自相关性，旨在得到因子持续性方面的信息（个人理解是因子生命周期长度）
-        2、分层效应（即一般书里面的投资组合排序法，但是我们的排序依据是模型的预测值而非因子暴露）
-        3、IC序列，IC均值和ICIR，不同频率的IC可视化（月均IC热力图）
-        4、t检验（因子检验方法 里面的（3))
-
-因子检验流程（石川等《因子投资方法与实践》）
-    (1)排序法
-    PS: 由于他们用的模型是线性回归模型，即 y_it = alpha_i + BETA_i * X_it + e_it, 因此对于x_kit in X_it, 其因子收益率就是对应的beta_ki * x_kit.
-        其中x_kit为xk因子对于资产i在t时刻的因子暴露，即xk因子标准化后在t时刻的值.
-        所有因子经过标准化后，可得到一个纯因子组合，这是因子模拟投资组合的前提条件
-
-        1、将资产池内的资产在截面上按照排序变量（要检验的因子值）进行排序
-        2、按照排序结果将资产分为n组（一般取n=5或n=10）
-        3、对每组资产计算其收益率，由于投资组合的收益率已经尽可能由目标因子驱动，因此该投资组合的收益率序列就是因子收益率序列（原书p23，存疑）
-        4、得到因子收益率后，进行假设检验（H0为收益率=0, H1为收益率>0）, 令r因子收益率的时间序列，则构建t统计量：t = mean(r) / std(r),
-           并进行5%水平下的双侧检验（书上p26原话是这么说，但如果预期因子收益率为正数则应该用单侧检验?）
-    (2)截面回归（或时序回归），即 因子检验方法 (1)，并做t检验
-"""
-import numpy as np
+from .operators import *
 import pandas as pd
-import time
-from scipy.stats import norm
-from joblib import Parallel, delayed
 
 
-def get_factor_loadings(concat_data: pd.DataFrame, feature: str, label: str) -> pd.Series:
-    """
-    考虑最简单的单指数模型: R = β * Rm + α, 其中α应为0, β = cov(R, Rm) / var(Rm)
-    使用rolling方法避免在回测中出现数据泄露(实盘不会出现这个问题)
-    """
-    cov: pd.Series = concat_data[feature].rolling(60, min_periods=30).cov(concat_data[label])
-    var: pd.Series = concat_data[feature].rolling(60, min_periods=30).var()
-    beta: pd.Series = cov / var
-    return beta * concat_data[feature]
+def factor_neutralize(factors: pd.DataFrame, feature: list[str] | None, target: pd.Series) -> pd.DataFrame:
+    return neutralize(factors, features=feature, target=target)
 
 
-def change_fr_into_factor(data: pd.DataFrame, feature: str, label: str = "label") -> pd.DataFrame:
-    """
-    change factor return into factors
-    将因子收益转换成因子
-    :param data: pd.DataFrame
-    :param feature: str, col name
-    :param label: str
-    :return: pd.DataFrame
-
-    """
-    return data.groupby(level=1, group_keys=False).apply(lambda x: get_factor_loadings(x, feature, label)).sort_index()
-
-
-def calc_dif(prices: pd.Series, n: int = 12, m: int = 26) -> pd.Series:
-    ema_n = prices.ewm(span=n, min_periods=n - 1).mean()
-    ema_m = prices.ewm(span=m, min_periods=m - 1).mean()
-    dif = ema_n - ema_m
-    return dif
-
-
-def calc_dea(dif: pd.Series, k: int = 9) -> pd.Series:
-    dea = dif.ewm(span=k, min_periods=k - 1).mean()
-    return dea
-
-
-def calc_rsi(price: pd.Series, windows: int = 14) -> pd.Series:
-    # 计算每日涨跌情况
-    diff = price.diff()
-    up = diff.copy()
-    up[up < 0] = 0
-    down = diff.copy()
-    down[down > 0] = 0
-
-    # 计算RSI指标
-    avg_gain = up.rolling(windows).sum() / windows
-    avg_loss = down.abs().rolling(windows).sum() / windows
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-
-    return rsi
-
-
-def calc_psy(price: pd.Series, windows: int = 10) -> pd.Series:
-    # 计算每日涨跌情况
-    diff = price.diff()
-    diff[diff > 0] = 1
-    diff[diff <= 0] = 0
-
-    # 计算PSY指标(其实是个分类指标, 在windows=w时, 最多有w+1个unique value(例如在windows=5时, 有0, 20, 40, 60, 80, 100))
-    psy = diff.rolling(windows, min_periods=windows - 1).sum() / windows * 100
-    return psy
-
-
-def VaR(x: pd.Series, prob: float = 0.05) -> float:
-    """
-    :param x: pd.Series
-    :param prob: float
-    :return: float
-    """
-    mean, std = x.mean(), x.std()
-    var = norm.ppf(1 - prob)
-    return (var * std) - mean
-
-
-# 各大类特征
-def MACD(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, groupby: str, name=None) -> pd.DataFrame:
-    # MACD中的DIF和DEA, 由于MACD是它们的线性组合所以没必要当作因子
-    if name is None:
-        name = ["DIF", "DEA"]
-    features = pd.DataFrame()
-    features[name[0]] = data_group.transform(lambda x: calc_dif(x))
-    features[name[1]] = features[name[0]].groupby(groupby).transform(lambda x: calc_dea(x))
-    return pd.concat([X, features], axis=1)
-
-
-def RET(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, groupby: str, name: str = "RET") \
-        -> pd.DataFrame:
-    features = pd.DataFrame()
-    for i in range(1, 5):
-        features[name + "1_" + str(i)] = (data / data_group.shift(i) - 1)
-        features[name + "2_" + str(i)] = (data / data_group.shift(i) - 1).groupby(groupby).rank(pct=True)
-    return pd.concat([X, features], axis=1)
-
-
-def SHIFT(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-          name: str) -> pd.DataFrame:
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.shift(w) / data
-    return pd.concat([X, features], axis=1)
-
-
-def ROC(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-        name: str = "ROC") -> pd.DataFrame:
-    # https://www.investopedia.com/terms/r/rateofchange.asp
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = (data / data_group.shift(w) - 1) / w
-    return pd.concat([X, features], axis=1)
-
-
-def BETA(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-         name: str = "BETA") -> pd.DataFrame:
-    # The rate of close price change in the past d days, divided by latest close price to remove unit
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = (data - data_group.shift(w)) / (data * w)
-    return pd.concat([X, features], axis=1)
-
-
-def MA(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-       name: str = "MA") -> pd.DataFrame:
-    # https://www.investopedia.com/ask/answers/071414/whats-difference-between-moving-average-and-weighted-moving-average.asp
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).mean()) / data
-    return pd.concat([X, features], axis=1)
-
-
-def STD(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-        name: str = "STD") -> pd.DataFrame:
-    # The standard deviation of close price for the past d days, divided by latest close price to remove unit
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).std()) / data
-    return pd.concat([X, features], axis=1)
-
-
-def MAX(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-        name: str = "MAX") -> pd.DataFrame:
-    # The max price for past d days, divided by latest close price to remove unit
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).max()) / data
-    return pd.concat([X, features], axis=1)
-
-
-def MIN(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-        name: str = "MIN") -> pd.DataFrame:
-    # The low price for past d days, divided by latest close price to remove unit
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).min()) / data
-    return pd.concat([X, features], axis=1)
-
-
-def RANK(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RANK") -> pd.DataFrame:
-    # 当前价格在过去一段时间中所处的水平
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: x.rolling(w, min_periods=w - 1).rank(pct=True))
-    return pd.concat([X, features], axis=1)
-
-
-def QTL(X: pd.DataFrame, data: pd.Series, data_group: pd.core.groupby.SeriesGroupBy, windows: list,
-        name: str = "QTL") -> pd.DataFrame:
-    # The x% quantile of past d day's close price, divided by latest close price to remove unit
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + "U" + str(w)] = data_group.transform(
-            lambda x: x.rolling(w, min_periods=w - 1).quantile(0.8)) / data
-        features[name + "D" + str(w)] = data_group.transform(
-            lambda x: x.rolling(w, min_periods=w - 1).quantile(0.2)) / data
-    return pd.concat([X, features], axis=1)
-
-
-def ts_CORR(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
-            name: str = "CORR") -> pd.DataFrame:
-    # 面板数据与时序数据计算相关系数, 在计算例如个股收益率与大盘收益率的相关系数时比普通方法快
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data1_group.transform(lambda x: x.rolling(w, min_periods=w - 1).corr(data2))
-    return pd.concat([X, features], axis=1)
-
-
-def ts_BETA(X: pd.DataFrame, data1_group: pd.core.groupby.SeriesGroupBy, data2: pd.Series, windows: list,
-            name: str = "ts_BETA") -> pd.DataFrame:
-    features = pd.DataFrame()
-    for w in windows:
-        cov = data1_group.transform(lambda x: x.rolling(w).cov(data2))
-        var = data1_group.transform(lambda x: x.rolling(w).var())
-        features[name + str(w)] = cov / var
-    return pd.concat([X, features], axis=1)
-
-
-def calc_corr(data: pd.DataFrame, feature: str, label: str, window=None):
-    corr = data[feature].rolling(window).corr(data[label])
-    return corr
-
-
-def ts_decay(data: pd.Series, window: int, lambda_val: float = 0.94) -> pd.Series:
-    """
-    :param data: 原序列数据
-    :param window: 衰减的期数
-    :param lambda_val: 超参数，根据《风险管理与金融机构》一书，将其设为0.94
-    :return: pd.Series
-    """
-    weight: float = 1.0 - np.exp(-lambda_val * window)
-    return data * weight
-
-
-def CORR(X: pd.DataFrame, data_group: pd.core.groupby.GroupBy, feature: str, label: str, name: str = "CORR",
-         windows=None):
-    """
-    example:
-    X = alpha.CORR(pd.DataFrame(), df, "close", "vol")
-
-    :param X:
-    :param data_group:
-    :param feature:
-    :param label:
-    :param name:
-    :param windows:
-    :return:
-    """
-    if windows is None:
-        windows = [5, 10, 20, 30, 60]
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = \
-            data_group.apply(lambda x: calc_corr(x, feature, label, window=w)).reset_index(0, drop=True)
-    return pd.concat([X, features.sort_index()], axis=1)
-
-
-def RSI(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSI") -> pd.DataFrame:
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: calc_rsi(x, w))
-    return pd.concat([X, features], axis=1)
-
-
-def PSY(X: pd.DataFrame, data_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "PSY") -> pd.DataFrame:
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = data_group.transform(lambda x: calc_psy(x, w))
-    return pd.concat([X, features], axis=1)
-
-
-def PERF(X: pd.DataFrame, data: pd.Series, group_idx: pd.core.groupby.SeriesGroupBy, name="PERF") -> pd.DataFrame:
-    # performance: 股票当日收益率相对大盘的表现
-    features = pd.DataFrame()
-    features[name + "1"] = data / (group_idx.mean() + 1e-10)
-    features[name + "2"] = data / group_idx.std()
-    features[name + "3"] = data / (group_idx.max() + 1e-10)
-    features[name + "4"] = data / (group_idx.min() + 1e-10)
-    features = features.groupby(level=0).rank(pct=True)
-    return pd.concat([X, features], axis=1)
-
-
-def IDX(X: pd.DataFrame, data: pd.Series, idx: pd.Series, windows: list, name: str = "IDX") -> pd.DataFrame:
-    # 收盘价相对开盘价的变化, 与大盘的移动平均线对比
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + "1_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).mean() + 1e-10)
-        features[name + "2_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).max() + 1e-10)
-        features[name + "3_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).min() + 1e-10)
-        features[name + "4_" + str(w)] = data / (idx.rolling(w, min_periods=w - 1).median() + 1e-10)
-    features = features.groupby(level=0).rank(pct=True)
-    return pd.concat([X, features], axis=1)
-
-
-def RSV(X: pd.DataFrame, data: pd.Series, low_group: pd.core.groupby.SeriesGroupBy,
-        high_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "RSV") -> pd.DataFrame:
-    # Represent the price position between upper and lower resistant price for past d days.
-    features = pd.DataFrame()
-    for w in windows:
-        LOW = low_group.transform(lambda x: x.rolling(w, min_periods=w - 1).min())
-        HIGH = high_group.transform(lambda x: x.rolling(w, min_periods=w - 1).max())
-        features[name + str(w)] = (data - LOW) / (HIGH - LOW + 1e-10)
-    return pd.concat([X, features], axis=1)
-
-
-# Greeks for stocks
-def DELTA(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, idx_return: pd.Series,
-          name: str = "DELTA") -> pd.DataFrame:
-    # The delta of option greeks
-    # DELTA = partial P / partial S. Let P be R_it and S be R_m
-    features = pd.DataFrame()
-    features[name] = ret_group.diff() / (idx_return.diff() + 1e-10)
-    # Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
-    # features -= Min
-    # features /= Max - Min
-    features = features.groupby(level=0).rank(pct=True)
-    return pd.concat([X, features], axis=1)
-
-
-def GAMMA(X: pd.DataFrame, idx_return: pd.Series, name: str = "GAMMA") -> pd.DataFrame:
-    # The gamma of greek value, which equals partial DELTA / partial S
-    # suppose delta DELTA  = gamma * delta S, which means gamma = delta DELTA / delta S
-    features = pd.DataFrame()
-    features[name] = X["DELTA"].groupby(X.index.names[1]).diff() / (idx_return.diff() + 1e-10)
-    # Min, Max = features.groupby(level=0).min(), features.groupby(level=0).max()
-    # features -= Min
-    # features /= Max - Min
-    features = features.groupby(level=0).rank(pct=True)
-    return pd.concat([X, features], axis=1)
-
-
-def VEGA(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "VEGA") -> pd.DataFrame:
-    # The vega of greek value
-    # delta p / delta sigma
-    delta_ret = ret_group.diff()
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = delta_ret / ret_group.transform(lambda x: x.rolling(w, min_periods=w - 1).std())
-    return pd.concat([X, features], axis=1)
-
-
-# 来自金融风险管理的因子
-def VAR(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "VAR") -> pd.DataFrame:
-    # the VaR of return at prob 5%
-    features = pd.DataFrame()
-    for w in windows:
-        features[name + str(w)] = ret_group.transform(lambda x: VaR(x.rolling(w, min_periods=w - 1)))
-    return pd.concat([X, features], axis=1)
-
-
-def SHARPE(X: pd.DataFrame, ret_group: pd.core.groupby.SeriesGroupBy, windows: list, name: str = "SHARPE", rank=True) \
-        -> pd.DataFrame:
-    features = pd.DataFrame()
-    for w in windows:
-        mean = ret_group.transform(lambda x: x.rolling(w).mean())
-        std = ret_group.transform(lambda x: x.rolling(w).std())
-        features[name + str(w)] = mean / (std + 1e-10)
-    if rank:
-        features = features.groupby(level=0, group_keys=False).rank(pct=True)
-    return pd.concat([X, features], axis=1)
-
-
-def make_factors(kwargs: dict = None, windows: list = None, fillna: bool = False) -> pd.DataFrame:
-    """
-    面板数据适用，序列数据请移步 make_factors_series
-
-    一个例子：
-        df = df.set_index(['time', 'code']).sort_index()
-
-        df['ret'] = q.price2ret(price=df['lastPrice'])
-
-        kwargs = {
-            'data': df,
-            'label': 'ret',
-            'price': 'lastPrice',
-            'last_close': 'lastClose',
-            'high': 'high',
-            'low': 'low',
-            'volume': 'volume',
-            'amount': 'amount',
-        }
-
-        X = alpha.make_factors(kwargs)
-
-    :param kwargs:
-    {
-        data: pd.DataFrame, 输入的数据
-        close: str, 收盘价的列名
-        open: str, 开盘价的列名
-        volume: str, 当前tick的交易量
-        amount: str, 当前tick的交易额
-        high: str, 当前tick的最高价
-        low: str, 当前tick的最低价
-    }
-    :param windows: list, 移动窗口的列表
-    :param fillna: 是否填充缺失值
-    :return: pd.DataFrame
-    """
-    start = time.time()
-    if kwargs is None:
-        kwargs = {}
-    if "data" not in kwargs.keys():
-        kwargs["data"] = pd.DataFrame()
-    if "close" not in kwargs.keys():
-        kwargs["close"] = None
-    if "open" not in kwargs.keys():
-        kwargs["open"] = None
-    if "volume" not in kwargs.keys():
-        kwargs["volume"] = None
-    if "amount" not in kwargs.keys():
-        kwargs["amount"] = None
-    if "high" not in kwargs.keys():
-        kwargs["high"] = None
-    if "low" not in kwargs.keys():
-        kwargs["low"] = None
-
-    data = kwargs["data"]
-
-    # fixme: 类型应为str | None
-    open = kwargs["open"]
-    close = kwargs["close"]
-    volume = kwargs['volume']
-    amount = kwargs['amount']
-    high = kwargs['high']
-    low = kwargs['low']
-    datetime = data.index.names[0]
-    groupby = data.index.names[1]
-
-    if windows is None:
-        windows = [5, 10, 20, 30, 60]
-
-    X = pd.DataFrame(index=data.index)
-
-    # 先计算好分组再反复调用，节省重复计算花费的时间(实验表明可以节省约80%的时间)
-    group_c = data[close].groupby(groupby) if close is not None else None
-    group_o = data[open].groupby(groupby) if open is not None else None
-    group_h = data[high].groupby(groupby) if high is not None else None
-    group_l = data[low].groupby(groupby) if low is not None else None
-    group_v = data[volume].groupby(groupby) if volume is not None else None
-    group_a = data[amount].groupby(groupby) if amount is not None else None
-
-    if close is not None:
-        data["ret"] = data[close] / group_c.shift(1) - 1
-        # data["ret"].fillna(1e-12)
-        group_r = data["ret"].groupby(groupby)
-        mean_ret = data["ret"].groupby(datetime).mean()
-
-        # X = MACD(X, group_c, groupby=groupby)
-        X = RET(X, data[close], group_c, groupby=datetime)
-        X = SHARPE(X, group_r, windows=windows)
-        X = SHIFT(X, data[close], group_c, windows=windows, name="CLOSE")
-        X = ROC(X, data[close], group_c, windows=windows)
-        X = BETA(X, data[close], group_c, windows=windows)
-        X = MA(X, data[close], group_c, windows=windows)
-        X = STD(X, data[close], group_c, windows=windows)
-        X = MAX(X, data[close], group_c, windows=windows)
-        X = MIN(X, data[close], group_c, windows=windows)
-        X = RANK(X, group_r, windows=windows)
-        X = QTL(X, data[close], group_c, windows=windows)
-        # X = MA(X, data["ret"], group_r, windows=windows, name="MA2_")
-        # X = STD(X, data["ret"], group_r, windows=windows, name="STD2_")
-        X = ts_CORR(X, group_r, mean_ret, windows=windows)
-
-        group_r_rank = X["RET2_1"].groupby(groupby)
-        X = ts_CORR(X, group_r_rank, mean_ret, windows=windows, name="CORR2_")
-
-        # 来自行为金融学的指标
-        X = RSI(X, group_c, windows=windows)
-        X = PSY(X, group_c, windows=windows)
-
-        # 来自金融工程的指标
-        X = DELTA(X, group_r, mean_ret)
-        X = GAMMA(X, mean_ret)
-        X = VEGA(X, group_r, windows=windows)
-        # 来自金融风险管理
-        # X = VAR(X, group_r, windows=windows)
-        del mean_ret, group_r, group_r_rank
-
-        if open is not None:
-            chg_rate = data[close] / data[open] - 1
-            group_idx = chg_rate.groupby(datetime)
-            idx = group_idx.mean()
-
-            X = PERF(X, chg_rate, group_idx)
-            X = IDX(X, chg_rate, idx, windows=windows)
-
-            features = pd.DataFrame()
-            # 收盘价对开盘价的变化, 对于大盘的表现
-            features["R_DELTA"] = (data[close] - data[open]).groupby(datetime).rank(pct=True)
-            features["KMID"] = chg_rate
-
-            del chg_rate, group_idx, idx
-
-            if high is not None:
-                features["KUP"] = (data[high] - data[open]) / data[open]
-                if low is not None:
-                    l9 = group_l.transform(lambda x: x.rolling(9).min())
-                    h9 = group_h.transform(lambda x: x.rolling(9).max())
-                    # KDJ指标
-                    features["KDJ_K"] = (data[close] - l9) / (h9 - l9) * 100
-                    features["KDJ_D"] = features["KDJ_K"].groupby(groupby).transform(lambda x: x.rolling(3).mean())
-                    del l9, h9
-                    features["KLEN"] = (data[high] - data[low]) / data[open]
-                    features["KMID2"] = (data[close] - data[open]) / (data[high] - data[low] + 1e-10)
-                    features["KUP2"] = (data[high] - data[open]) / (data[high] - data[low] + 1e-10)
-                    features["KLOW"] = (data[close] - data[low]) / data[open]
-                    features["KLOW2"] = (data[close] - data[low]) / (data[high] - data[low] + 1e-10)
-                    features["KSFT"] = (2 * data[close] - data[high] - data[low]) / data[open]
-                    features["KSFT2"] = (2 * data[close] - data[high] - data[low]) / (data[high] - data[low] + 1e-10)
-                    features["VWAP"] = (data[high] + data[low] + data[close]) / (3 * data[open])
-                    X = RSV(X, data[close], group_l, group_h, windows=windows)
-
-            X = pd.concat([X, features], axis=1)
-            # 在世坤的BRAIN挖到的因子
-            X["rank"] = -1 / (data["ret"].groupby("datetime").rank(pct=True) + 1e-10)
-            # X = CORR(X, data=X, feature="VWAP", label="rank", windows=windows, name="CORR3_")
-            # del X["rank"]
-            del features
-
-    if open is not None:
-        X = SHIFT(X, data[open], group_o, windows=windows, name="OPEN")
-
-    if high is not None:
-        X = SHIFT(X, data[high], group_h, windows=windows, name="HIGH")
-        if low is not None:
-            if close is not None:
-                X["MEAN1"] = (data[high] + data[low]) / (2 * data[close])
-
-    if low is not None:
-        X = SHIFT(X, data[low], group_l, windows=windows, name="LOW")
-
-    if volume is not None:
-        X = SHIFT(X, data[volume], group_v, windows=windows, name="VOLUME")
-        X = MA(X, data[volume], group_v, windows=windows, name="VMA")
-        X = STD(X, data[volume], group_v, windows=windows, name="VSTD")
-        X["VMEAN"] = data[volume] / data[volume].groupby(datetime).mean()
-        if amount is not None:
-            mean = data[amount] / data[volume]
-            group_mean = mean.groupby(groupby)
-            X["MEAN2"] = mean / mean.groupby(datetime).mean()
-            X = SHIFT(X, mean, group_mean, windows=windows, name="MEAN2_")
-            del mean, group_mean
-
-        # if close is not None:
-        # X = CORR(X, data, feature=close, label=volume, name="CORR4_")
-
-    if amount is not None:
-        X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
-
-    if fillna is True:
-        X = X.groupby(groupby).fillna(method="ffill").fillna(X[~X.isnull()].mean())
-    end = time.time()
-    print("time used:", end - start)
-    return X
-
-
-def alpha360(kwargs: dict, shift: int = 60, fillna: bool = False) -> pd.DataFrame:
-    start = time.time()
-    if kwargs is None:
-        kwargs = {}
-    if "data" not in kwargs.keys():
-        kwargs["data"] = pd.DataFrame()
-    if "close" not in kwargs.keys():
-        kwargs["close"] = "close"
-    if "open" not in kwargs.keys():
-        kwargs["open"] = "open"
-    if "volume" not in kwargs.keys():
-        kwargs["volume"] = "volume"
-    if "amount" not in kwargs.keys():
-        kwargs["amount"] = "amount"
-    if "high" not in kwargs.keys():
-        kwargs["high"] = "high"
-    if "low" not in kwargs.keys():
-        kwargs["low"] = "low"
-
-    data = kwargs["data"]
-    open = kwargs["open"]
-    close = kwargs["close"]
-    volume = kwargs['volume']
-    amount = kwargs['amount']
-    high = kwargs['high']
-    low = kwargs['low']
-    groupby = data.index.names[1]
-
-    X = pd.DataFrame()
-
-    group_c = data[close].groupby(groupby) if close is not None else None
-    group_o = data[open].groupby(groupby) if open is not None else None
-    group_h = data[high].groupby(groupby) if high is not None else None
-    group_l = data[low].groupby(groupby) if low is not None else None
-    group_v = data[volume].groupby(groupby) if volume is not None else None
-    group_a = data[amount].groupby(groupby) if amount is not None else None
-
-    windows = [i for i in range(0, shift)]
-
-    if open is not None:
-        X = SHIFT(X, data[open], group_o, windows=windows, name="OPEN")
-
-    if close is not None:
-        X = SHIFT(X, data[close], group_c, windows=windows, name="CLOSE")
-
-    if high is not None:
-        X = SHIFT(X, data[high], group_h, windows=windows, name="HIGH")
-
-    if low is not None:
-        X = SHIFT(X, data[low], group_l, windows=windows, name="LOW")
-
-    if volume is not None:
-        X = SHIFT(X, data[volume], group_v, windows=windows, name="VOLUME")
-
-    if amount is not None:
-        X = SHIFT(X, data[amount], group_a, windows=windows, name="AMOUNT")
-
-    if fillna:
-        X = X.groupby(groupby).fillna(method="ffill").fillna(X[~X.isnull()].mean())
-    end = time.time()
-    print("time used:", end - start)
-    return X
-
-
-def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
-    """
-    经过百万级的数据的上千次实验, 发现此方法比调用sklearn.linear_model的LinearRegression平均快一倍
-    """
-    cov = x.cov(y)
-    var = x.var()
-    beta = cov / var
-    del cov, var
-    beta0 = y.mean() - beta * x.mean()
-    return y - beta0 - beta * x
-
-
-def neutralize(data: pd.DataFrame, target: pd.Series, features: list = None, n_jobs=-1) -> pd.DataFrame:
-    """
-    在截面上对选定的features进行target中性化, 剩余因子不变
-
-    example:
-
-    # 使用补充数据data, 对factor_raw的RSI, MACD和KDJ_K因子进行市值中性化
-
-    factor_neutralized = alpha.neutralize(factor_raw, target=data["ln_market_value"], features=["RSI", "MACD", "KDJ_K"])
-
-    :param data: 需要中性化的因子集合
-    :param target: 解释变量
-    :param features: 需要中性化的因子名(列表), 因为不同因子可能需要不同的中性化手法, 故通过此参数控制进行中性化的因子
-    :param n_jobs: 同时调用的cpu数
-    :return: pd.DataFrame, 包括中性化后的因子和未中性化的其它因子
-    """
-    target = target[target.index.isin(data.index)]
-    concat_data = pd.concat([data, target], axis=1)
-    target_name = target.name
-    features = data.columns if features is None else features
-    other_cols = [c for c in data.columns if c not in features]
-    del data, target
-
-    def neutralize_single_factor(f_name: str) -> pd.Series:
-        result = concat_data[[f_name, target_name]].groupby(level=0, group_keys=False).apply(
-            lambda x: get_resid(x[target_name], x[f_name]))
-        result.name = f_name
-        return result
-
-    factor_neu = Parallel(n_jobs=n_jobs)(delayed(neutralize_single_factor)(f) for f in features)
-    data_neu = pd.concat(factor_neu, axis=1)
-    del factor_neu
-    return pd.concat([data_neu, concat_data[other_cols]], axis=1)
-
-
-def market_neutralize(x: pd.Series, long_only=False) -> pd.Series:
+def market_neutralize(x: pd.Series, long_only: bool = False) -> pd.Series:
     """
     市场组合中性化:
     (1) 对所有股票减去其截面上的因子均值
@@ -713,6 +27,12 @@ def market_neutralize(x: pd.Series, long_only=False) -> pd.Series:
 
 
 def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool = False) -> pd.Series:
+    """
+    :param feature: 因子值
+    :param label: 收益率
+    :param long_only: 是否只做多
+    :return: 时序数据portfolio, 代表累计收益率
+    """
     x_neu = market_neutralize(feature, long_only=long_only)
     X = pd.DataFrame({"feature": x_neu, "label": label})
     X.dropna(inplace=True)
@@ -722,3 +42,1123 @@ def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool =
     portfolio = daily_return.cumprod()
     portfolio.index = pd.to_datetime(portfolio.index)
     return portfolio
+
+
+class Alpha:
+    def __init__(self):
+        self.data = None
+        self.norm_method = None
+        self.process_nan = None
+        self.result = None
+
+    def call(self):
+        """
+        Write your alpha formula here
+        """
+        pass
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class MA(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_mean(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["ma" + str(d)] = ts_mean(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class STD(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_std(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["std" + str(d)] = ts_std(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class KURT(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_kurt(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["kurt" + str(d)] = ts_kurt(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class SKEW(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_skew(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["skew" + str(d)] = ts_skew(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class DELAY(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_delay(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["delay" + str(d)] = ts_delay(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class DELTA(Alpha):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_delta(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["delta" + str(d)] = ts_delta(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class MAX(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_max(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["max" + str(d)] = ts_max(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class MIN(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_min(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["min" + str(d)] = ts_min(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class RANK(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_rank(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["rank" + str(d)] = ts_rank(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class QTLU(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_quantile_up(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["qtlu" + str(d)] = ts_quantile_up(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class QTLD(Alpha):
+    def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_quantile_down(self.data, self.periods)
+        else:
+            for d in self.periods:
+                self.result["qtld" + str(d)] = ts_quantile_down(self.data, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class CORR(Alpha):
+    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.feature = feature
+        self.label = label
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_corr(self.data, self.feature, self.label, self.periods)
+        else:
+            for d in self.periods:
+                self.result["corr" + str(d)] = ts_corr(self.data, self.feature, self.label, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class CORD(Alpha):
+    # The correlation between feature change ratio and label change ratio
+    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.feature = feature
+        self.label = label
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        self.data["fd"] = self.data[self.feature] / ts_delay(self.data[self.feature], 1)
+        self.data["ld"] = self.data[self.label] / ts_delay(self.data[self.label], 1)
+        if isinstance(self.periods, int):
+            self.result = ts_corr(self.data, "fd", "ld", self.periods)
+        else:
+            for d in self.periods:
+                self.result["cord" + str(d)] = ts_corr(self.data, "fd", "ld", d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class COV(Alpha):
+    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.feature = feature
+        self.label = label
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_cov(self.data, self.feature, self.label, self.periods)
+        else:
+            for d in self.periods:
+                self.result["cov" + str(d)] = ts_cov(self.data, self.feature, self.label, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class BETA(Alpha):
+    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.feature = feature
+        self.label = label
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_beta(self.data, self.feature, self.label, self.periods)
+        else:
+            for d in self.periods:
+                self.result["beta" + str(d)] = ts_beta(self.data, self.feature, self.label, d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class REGRESSION(Alpha):
+    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int, rettype: int = 0,
+                 normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.feature = feature
+        self.label = label
+        self.periods = periods
+        self.rettype = rettype
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_regression(self.data, self.feature, self.label, self.periods, rettype=self.rettype)
+        else:
+            for d in self.periods:
+                self.result["reg" + str(d)] = ts_regression(self.data, self.feature, self.label, d, self.rettype)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class PSY(Alpha):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_pos_count(ts_delta(self.data, 1), self.periods) / self.periods * 100
+        else:
+            for d in self.periods:
+                self.result["psy" + str(d)] = ts_pos_count(ts_delta(self.data, 1), d) / d * 100
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class KBAR(Alpha):
+    def __init__(self, data: pd.DataFrame, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.DataFrame(dtype='float64')
+
+    def call(self):
+        self.result["kmid"] = (self.data["close"] - self.data["open"]) / self.data["open"]
+        self.result["klen"] = (self.data["high"] - self.data["low"]) / self.data["open"]
+        self.result["kmid2"] = (self.data["close"] - self.data["open"]) / (self.data["high"] - self.data["low"])
+        self.result["kup"] = (self.data["high"] - bigger(self.data["open"], self.data["close"])) / self.data["open"]
+        self.result["kup2"] = (self.data["high"] - bigger(self.data["open"], self.data["close"])) / (
+                self.data["high"] - self.data["low"])
+        self.result["klow"] = (smaller(self.data["open"], self.data["close"]) - self.data["low"]) / self.data["open"]
+        self.result["klow2"] = (smaller(self.data["open"], self.data["close"]) - self.data["low"]) / (
+                self.data["high"] - self.data["low"])
+        self.result["ksft"] = (2 * self.data["close"] - self.data["high"] - self.data["low"]) / self.data["open"]
+        self.result["ksft2"] = (2 * self.data["close"] - self.data["high"] - self.data["low"]) / (
+                self.data["high"] - self.data["low"])
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class RSV(Alpha):
+    def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            lowest = ts_min(self.data["low"], self.periods)
+            self.result = (self.data["close"] - lowest) / (ts_max(self.data["high"], self.periods) - lowest)
+        else:
+            for d in self.periods:
+                lowest_d = ts_min(self.data["low"], d)
+                self.result["rsv" + str(d)] = (self.data["close"] - lowest_d) / (
+                        ts_max(self.data["high"], d) - lowest_d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class CNTP(Alpha):
+    # The percentage of days in past d days that price go up.
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_pos_count(ts_delta(self.data, 1), self.periods) / self.periods
+        else:
+            for d in self.periods:
+                self.result["cntp" + str(d)] = ts_pos_count(ts_delta(self.data, 1), d) / d
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class CNTN(Alpha):
+    # The percentage of days in past d days that price go down.
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_neg_count(ts_delta(self.data, 1), self.periods) / self.periods
+        else:
+            for d in self.periods:
+                self.result["cntn" + str(d)] = ts_neg_count(ts_delta(self.data, 1), d) / d
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class SUMP(Alpha):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_sum(bigger(self.data, ts_delay(self.data, 1)), self.periods) / ts_sum(
+                abs(ts_delta(self.data, 1)), self.periods)
+        else:
+            for d in self.periods:
+                self.result["sump" + str(d)] = ts_sum(bigger(self.data, ts_delay(self.data, 1)), d) / ts_sum(
+                    abs(ts_delta(self.data, 1)), d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd.DataFrame:
+    """
+    复现qlib的alpha 360.
+    将qlib源代码中的vwap替换成amount, 因为按照qlib的workflow, vwap全是空值, 则vwap类的因子是没有意义的
+
+    :param data: 包括以下几列: open, close, high, low, volume, amount
+    :param normalize: 是否进行cs zscore标准化
+    :param fill: 是否向后填充缺失值
+    :param windows: 列表, 默认为[5, 10, 20, 30, 60]
+    :return:
+    """
+    if windows is None:
+        windows = [i for i in range(59, 0, -1)]
+    o_group = data["open"].groupby(level=1)
+    c_group = data["close"].groupby(level=1)
+    h_group = data["high"].groupby(level=1)
+    l_group = data["low"].groupby(level=1)
+    v_group = data["volume"].groupby(level=1)
+    a_group = data["amount"].groupby(level=1)
+
+    price = data["close"]
+    volume = data["volume"]
+
+    OPEN = DELAY(o_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    OPEN.columns = ["open" + str(w) for w in windows]
+    for c in OPEN.columns:
+        OPEN[c] /= price
+
+    CLOSE = DELAY(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    CLOSE.columns = ["close" + str(w) for w in windows]
+    for c in CLOSE.columns:
+        CLOSE[c] /= price
+
+    HIGH = DELAY(h_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    HIGH.columns = ["high" + str(w) for w in windows]
+    for c in HIGH.columns:
+        HIGH[c] /= price
+
+    LOW = DELAY(l_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    LOW.columns = ["low" + str(w) for w in windows]
+    for c in LOW.columns:
+        LOW[c] /= price
+
+    VOLUME = DELAY(v_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    VOLUME.columns = ["volume" + str(w) for w in windows]
+    for c in VOLUME.columns:
+        VOLUME[c] /= volume
+
+    AMOUNT = DELAY(a_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    AMOUNT.columns = ["amount" + str(w) for w in windows]
+    for c in AMOUNT.columns:
+        AMOUNT[c] /= price * volume
+    features = pd.concat([OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT], axis=1)
+    return features
+
+
+def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, windows=None) -> pd.DataFrame:
+    """
+    复现qlib的alpha 158.
+    将一些指代不明的因子(例如rsqr, resi)和计算得不那么精确的因子(例如beta)替换成另外的表达式
+
+    :param data: 包括以下几列: open, close, high, low, volume, amount
+    :param normalize: 是否进行cs zscore标准化
+    :param fill: 是否向后填充缺失值
+    :param windows: 列表, 默认为[5, 10, 20, 30, 60]
+    :return:
+    """
+    if windows is None:
+        windows = [5, 10, 20, 30, 60]
+    o_group = data["open"].groupby(level=1)
+    c_group = data["close"].groupby(level=1)
+    h_group = data["high"].groupby(level=1)
+    l_group = data["low"].groupby(level=1)
+    v_group = data["volume"].groupby(level=1)
+    a_group = data["amount"].groupby(level=1)
+
+    price = data["close"]
+    volume = data["volume"]
+
+    OPEN = DELAY(o_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    OPEN.columns = ["open" + str(w) for w in windows]
+    for c in OPEN.columns:
+        OPEN[c] /= price
+
+    CLOSE = DELAY(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    CLOSE.columns = ["close" + str(w) for w in windows]
+    for c in CLOSE.columns:
+        CLOSE[c] /= price
+
+    HIGH = DELAY(h_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    HIGH.columns = ["high" + str(w) for w in windows]
+    for c in HIGH.columns:
+        HIGH[c] /= price
+
+    LOW = DELAY(l_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    LOW.columns = ["low" + str(w) for w in windows]
+    for c in LOW.columns:
+        LOW[c] /= price
+
+    VOLUME = DELAY(v_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    VOLUME.columns = ["volume" + str(w) for w in windows]
+    for c in VOLUME.columns:
+        VOLUME[c] /= volume
+
+    AMOUNT = DELAY(a_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    AMOUNT.columns = ["amount" + str(w) for w in windows]
+    for c in AMOUNT.columns:
+        AMOUNT[c] /= price * volume
+
+    k = KBAR(data).get_factor_value(normalize=normalize, handle_nan=fill)
+
+    delta = DELTA(data["close"], periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    delta.columns = ["roc" + str(w) for w in windows]
+    for c in delta.columns:
+        delta[c] /= price
+
+    ma = MA(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    for c in ma.columns:
+        ma[c] /= price
+
+    std = STD(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    for c in std.columns:
+        std[c] /= price
+
+    beta = BETA(data, "open", "close", windows).get_factor_value(normalize=normalize, handle_nan=fill)
+
+    r2 = REGRESSION(data, "open", "close", windows, rettype=4).get_factor_value(normalize=normalize, handle_nan=fill)
+    r2.columns = ["rsqr" + str(w) for w in windows]
+
+    resi = REGRESSION(data, "open", "close", windows, rettype=0).get_factor_value(normalize=normalize, handle_nan=fill)
+    resi.columns = ["resi" + str(w) for w in windows]
+    for c in resi.columns:
+        resi[c] /= price
+
+    cmax = MAX(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    for c in cmax.columns:
+        cmax[c] /= price
+
+    cmin = MIN(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    for c in cmin.columns:
+        cmin[c] /= price
+
+    qtlu = QTLU(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    for c in qtlu.columns:
+        qtlu[c] /= price
+
+    qtld = QTLD(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    for c in qtld.columns:
+        qtld[c] /= price
+
+    rank = RANK(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    rsv = RSV(data, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+
+    vol_mask = data["volume"].transform(lambda x: x if x > 0 else np.nan)
+    data["log_volume"] = log(vol_mask)
+    corr = CORR(data, "close", "log_volume", windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    del data["log_volume"], vol_mask
+
+    cord = CORD(data, "close", "volume", windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    cntp = CNTP(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    cntn = CNTN(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    sump = SUMP(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+
+    vma = MA(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    vma.columns = ["vma" + str(w) for w in windows]
+    for c in vma.columns:
+        vma[c] /= volume
+
+    vstd = STD(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    vstd.columns = ["vstd" + str(w) for w in windows]
+    for c in vstd.columns:
+        vstd[c] /= volume
+
+    vsump = SUMP(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    vsump.columns = ["vsump" + str(w) for w in windows]
+
+    features = pd.concat(
+        [OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, k, delta, ma, std, beta, r2, resi, cmax, cmin, qtlu, qtld, rank, rsv,
+         corr, cord, cntp, cntn, sump, vma, vstd, vsump],
+        axis=1)
+    return features

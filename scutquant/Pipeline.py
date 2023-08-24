@@ -103,17 +103,12 @@ def load_data(target_dir="", kwargs=None, auto_generate=False):
 def get_factors(data, kwargs=None, auto_generate=False):
     if auto_generate and kwargs is None:
         kwargs = {
-            "open": "open",
-            "close": "close",
-            "high": "high",
-            "low": "low",
-            "volume": "volume",
-            "amount": "amount",
-            "windows": [5, 10, 20, 30, 60],
-            "fillna": False
+            "normalize": False,
+            "fill": False,
+            "windows": [5, 10, 20, 30, 60]
         }
     kwargs["data"] = data
-    X = alpha.make_factors(kwargs, windows=kwargs["windows"], fillna=kwargs["fillna"])
+    X = alpha.qlib158(data, normalize=kwargs["normalize"], fill=kwargs["fill"])
     return X
 
 
