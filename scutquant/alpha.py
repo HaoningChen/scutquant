@@ -951,12 +951,53 @@ class SUMP(Alpha):
 
     def call(self):
         if isinstance(self.periods, int):
-            self.result = ts_sum(bigger(self.data, ts_delay(self.data, 1)), self.periods) / ts_sum(
+            self.result = ts_sum(bigger(ts_delta(self.data, 1), self.data - self.data), self.periods) / ts_sum(
                 abs(ts_delta(self.data, 1)), self.periods)
         else:
             for d in self.periods:
-                self.result["sump" + str(d)] = ts_sum(bigger(self.data, ts_delay(self.data, 1)), d) / ts_sum(
-                    abs(ts_delta(self.data, 1)), d)
+                self.result["sump" + str(d)] = ts_sum(bigger(ts_delta(self.data, 1), self.data - self.data),
+                                                      d) / ts_sum(abs(ts_delta(self.data, 1)), d)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class SUMN(Alpha):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.periods, int):
+            self.result = ts_sum(bigger(-ts_delta(self.data, 1), self.data - self.data), self.periods) / ts_sum(
+                abs(ts_delta(self.data, 1)), self.periods)
+        else:
+            for d in self.periods:
+                self.result["sump" + str(d)] = ts_sum(bigger(-ts_delta(self.data, 1), self.data - self.data),
+                                                      d) / ts_sum(abs(ts_delta(self.data, 1)), d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -1060,32 +1101,32 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     price = data["close"]
     volume = data["volume"]
 
-    OPEN = DELAY(o_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    OPEN = DELAY(o_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     OPEN.columns = ["open" + str(w) for w in windows]
     for c in OPEN.columns:
         OPEN[c] /= price
 
-    CLOSE = DELAY(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    CLOSE = DELAY(c_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     CLOSE.columns = ["close" + str(w) for w in windows]
     for c in CLOSE.columns:
         CLOSE[c] /= price
 
-    HIGH = DELAY(h_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    HIGH = DELAY(h_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     HIGH.columns = ["high" + str(w) for w in windows]
     for c in HIGH.columns:
         HIGH[c] /= price
 
-    LOW = DELAY(l_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    LOW = DELAY(l_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     LOW.columns = ["low" + str(w) for w in windows]
     for c in LOW.columns:
         LOW[c] /= price
 
-    VOLUME = DELAY(v_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    VOLUME = DELAY(v_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     VOLUME.columns = ["volume" + str(w) for w in windows]
     for c in VOLUME.columns:
         VOLUME[c] /= volume
 
-    AMOUNT = DELAY(a_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    AMOUNT = DELAY(a_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     AMOUNT.columns = ["amount" + str(w) for w in windows]
     for c in AMOUNT.columns:
         AMOUNT[c] /= price * volume
@@ -1143,6 +1184,7 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     cntp = CNTP(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     cntn = CNTN(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     sump = SUMP(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    sumn = SUMN(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
 
     vma = MA(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vma.columns = ["vma" + str(w) for w in windows]
@@ -1157,8 +1199,11 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     vsump = SUMP(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsump.columns = ["vsump" + str(w) for w in windows]
 
+    vsumn = SUMN(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    vsumn.columns = ["vsumn" + str(w) for w in windows]
+
     features = pd.concat(
         [OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, k, delta, ma, std, beta, r2, resi, cmax, cmin, qtlu, qtld, rank, rsv,
-         corr, cord, cntp, cntn, sump, vma, vstd, vsump],
+         corr, cord, cntp, cntn, sump, sumn, vma, vstd, vsump, vsumn],
         axis=1)
     return features
