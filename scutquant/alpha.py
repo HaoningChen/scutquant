@@ -2,7 +2,7 @@ from .operators import *
 import pandas as pd
 
 
-def factor_neutralize(factors: pd.DataFrame, feature: list[str] | None, target: pd.Series) -> pd.DataFrame:
+def factor_neutralize(factors: pd.DataFrame, target: pd.Series, feature: list[str] = None) -> pd.DataFrame:
     return neutralize(factors, features=feature, target=target)
 
 
