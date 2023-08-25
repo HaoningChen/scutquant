@@ -743,11 +743,12 @@ class PSY(Alpha):
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
+        diff = ts_delta(self.data, 1)
         if isinstance(self.periods, int):
-            self.result = ts_pos_count(ts_delta(self.data, 1), self.periods) / self.periods * 100
+            self.result = ts_pos_count(diff, self.periods) / self.periods * 100
         else:
             for d in self.periods:
-                self.result["psy" + str(d)] = ts_pos_count(ts_delta(self.data, 1), d) / d * 100
+                self.result["psy" + str(d)] = ts_pos_count(diff, d) / d * 100
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -871,11 +872,12 @@ class CNTP(Alpha):
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
+        diff = ts_delta(self.data, 1)
         if isinstance(self.periods, int):
-            self.result = ts_pos_count(ts_delta(self.data, 1), self.periods) / self.periods
+            self.result = ts_pos_count(diff, self.periods) / self.periods
         else:
             for d in self.periods:
-                self.result["cntp" + str(d)] = ts_pos_count(ts_delta(self.data, 1), d) / d
+                self.result["cntp" + str(d)] = ts_pos_count(diff, d) / d
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -911,11 +913,12 @@ class CNTN(Alpha):
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
+        diff = ts_delta(self.data, 1)
         if isinstance(self.periods, int):
-            self.result = ts_neg_count(ts_delta(self.data, 1), self.periods) / self.periods
+            self.result = ts_neg_count(diff, self.periods) / self.periods
         else:
             for d in self.periods:
-                self.result["cntn" + str(d)] = ts_neg_count(ts_delta(self.data, 1), d) / d
+                self.result["cntn" + str(d)] = ts_neg_count(diff, d) / d
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -950,13 +953,13 @@ class SUMP(Alpha):
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
+        zeros = self.data - self.data
+        diff = ts_delta(self.data, 1)
         if isinstance(self.periods, int):
-            self.result = ts_sum(bigger(ts_delta(self.data, 1), self.data - self.data), self.periods) / ts_sum(
-                abs(ts_delta(self.data, 1)), self.periods)
+            self.result = ts_sum(bigger(diff, zeros), self.periods) / ts_sum(abs(diff), self.periods)
         else:
             for d in self.periods:
-                self.result["sump" + str(d)] = ts_sum(bigger(ts_delta(self.data, 1), self.data - self.data),
-                                                      d) / ts_sum(abs(ts_delta(self.data, 1)), d)
+                self.result["sump" + str(d)] = ts_sum(bigger(diff, zeros), d) / ts_sum(abs(diff), d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -991,13 +994,13 @@ class SUMN(Alpha):
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
+        zeros = self.data - self.data
+        diff = ts_delta(self.data, 1)
         if isinstance(self.periods, int):
-            self.result = ts_sum(bigger(-ts_delta(self.data, 1), self.data - self.data), self.periods) / ts_sum(
-                abs(ts_delta(self.data, 1)), self.periods)
+            self.result = ts_sum(bigger(-diff, zeros), self.periods) / ts_sum(abs(diff), self.periods)
         else:
             for d in self.periods:
-                self.result["sump" + str(d)] = ts_sum(bigger(-ts_delta(self.data, 1), self.data - self.data),
-                                                      d) / ts_sum(abs(ts_delta(self.data, 1)), d)
+                self.result["sump" + str(d)] = ts_sum(bigger(-diff, zeros), d) / ts_sum(abs(diff), d)
 
     def normalize(self):
         if self.norm_method == "zscore":
