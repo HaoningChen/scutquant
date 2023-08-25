@@ -1000,7 +1000,7 @@ class SUMN(Alpha):
             self.result = ts_sum(bigger(-diff, zeros), self.periods) / ts_sum(abs(diff), self.periods)
         else:
             for d in self.periods:
-                self.result["sump" + str(d)] = ts_sum(bigger(-diff, zeros), d) / ts_sum(abs(diff), d)
+                self.result["sumn" + str(d)] = ts_sum(bigger(-diff, zeros), d) / ts_sum(abs(diff), d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -1105,32 +1105,32 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     volume = data["volume"]
 
     OPEN = DELAY(o_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    OPEN.columns = ["open" + str(w) for w in windows]
+    OPEN.columns = ["open" + str(w) for w in range(1, 6)]
     for c in OPEN.columns:
         OPEN[c] /= price
 
     CLOSE = DELAY(c_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    CLOSE.columns = ["close" + str(w) for w in windows]
+    CLOSE.columns = ["close" + str(w) for w in range(1, 6)]
     for c in CLOSE.columns:
         CLOSE[c] /= price
 
     HIGH = DELAY(h_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    HIGH.columns = ["high" + str(w) for w in windows]
+    HIGH.columns = ["high" + str(w) for w in range(1, 6)]
     for c in HIGH.columns:
         HIGH[c] /= price
 
     LOW = DELAY(l_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    LOW.columns = ["low" + str(w) for w in windows]
+    LOW.columns = ["low" + str(w) for w in range(1, 6)]
     for c in LOW.columns:
         LOW[c] /= price
 
     VOLUME = DELAY(v_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    VOLUME.columns = ["volume" + str(w) for w in windows]
+    VOLUME.columns = ["volume" + str(w) for w in range(1, 6)]
     for c in VOLUME.columns:
         VOLUME[c] /= volume
 
     AMOUNT = DELAY(a_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    AMOUNT.columns = ["amount" + str(w) for w in windows]
+    AMOUNT.columns = ["amount" + str(w) for w in range(1, 6)]
     for c in AMOUNT.columns:
         AMOUNT[c] /= price * volume
 
