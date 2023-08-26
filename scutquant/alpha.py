@@ -1025,6 +1025,50 @@ class SUMN(Alpha):
         return self.result
 
 
+class WQ_1(Alpha):
+    # ts_decay_linear(ts_rank(close, 20) * cs_rank(volume) / cs_rank(returns), 15)
+    def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: bool = True):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        c_rank = cs_rank(ts_returns(self.data["close"], 1))
+        volume_rank = cs_rank(self.data["volume"])
+        rank_ratio = volume_rank / c_rank
+        if isinstance(self.periods, int):
+            self.result = ts_decay_linear(-ts_rank(self.data["close"], self.periods) * rank_ratio, 15)
+        else:
+            for d in self.periods:
+                self.result["wq1_" + str(d)] = ts_decay_linear(-ts_rank(self.data["close"], d) * rank_ratio, 15)
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        if self.process_nan:
+            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
 def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd.DataFrame:
     """
     复现qlib的alpha 360.
