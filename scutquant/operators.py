@@ -46,6 +46,14 @@ def ts_delta(data: pd.Series, n_period: int) -> pd.Series:
     return data - ts_delay(data, n_period)
 
 
+def ts_returns(data: pd.Series, n_period: int) -> pd.Series:
+    """
+    Returns the relative change of data .
+    :return:
+    """
+    return ts_delta(data, n_period) / ts_delay(data, n_period)
+
+
 def ts_sum(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd.Series:
     """
     Sum values of data for the past n_period days.
@@ -56,6 +64,18 @@ def ts_sum(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd
         res: pd.Series = data.transform(lambda x: x.rolling(n_period).sum())
         res.index.names = ["datetime", "instrument"]
         return res
+
+
+def ts_product(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd.Series:
+    """
+    Returns product of data for the past n_period days
+    """
+    if isinstance(data, pd.Series):
+        prod = data.groupby(level=1).transform(lambda x: x.cumprod())
+    else:
+        prod = data.transform(lambda x: x.cumprod())
+        prod.index.names = ["datetime", "instrument"]
+    return prod / ts_delay(data, n_period)
 
 
 def ts_max(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd.Series:
@@ -331,6 +351,33 @@ def ts_neg_count(data: pd.Series, n_period: int) -> pd.Series:
     data_copy[data_copy > 0] = 0
     data_copy[data_copy < 0] = 1
     return data_copy.groupby(level=1).transform(lambda x: x.rolling(n_period).sum())
+
+
+def linear_decay(x: pd.Series, window: int) -> pd.Series:
+    """
+    Applies linear decay to a time series.
+
+    :param x: The time series to apply linear decay to.
+    :type x: pd.Series
+    :param window: The window size for the linear decay.
+    :type window: int
+    :return: The time series with linear decay applied.
+    :rtype: pd.Series
+    """
+    weights = [np.exp(-1 / window * (window - t)) for t in range(window)]
+    return x.rolling(window).apply(lambda y: sum(y * weights) / sum(weights), raw=True)
+
+
+def ts_decay_linear(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: int) -> pd.Series:
+    """
+    Returns the linear decay on data for the past n_period days.
+    """
+    if isinstance(data, pd.Series):
+        return data.groupby(level=1).transform(lambda x: linear_decay(x, n_period))
+    else:
+        res: pd.Series = data.transform(lambda x: linear_decay(x, n_period))
+        res.index.names = ["datetime", "instrument"]
+        return res
 
 
 def cs_rank(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
