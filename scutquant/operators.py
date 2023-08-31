@@ -135,6 +135,21 @@ def ts_std(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd
         return res
 
 
+def ts_dstd(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd.Series:
+    """
+    Returns downside standard deviation of data for the past n_period days
+    """
+    def downside_std(df: pd.Series):
+        downside_data = df.where(df > 0, np.nan)
+        return downside_data.rolling(n_period, min_periods=2).std()
+    if isinstance(data, pd.Series):
+        return data.groupby(level=1).transform(lambda x: downside_std(x))
+    else:
+        res: pd.Series = data.transform(lambda x: downside_std(x))
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
 def ts_kurt(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> pd.Series:
     """
     Returns kurtosis of data for the last n_period days.

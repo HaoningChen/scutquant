@@ -68,8 +68,7 @@ class Alpha:
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -82,7 +81,7 @@ class Alpha:
 
 class MA(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -108,8 +107,7 @@ class MA(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -122,7 +120,7 @@ class MA(Alpha):
 
 class STD(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -148,8 +146,7 @@ class STD(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -162,7 +159,7 @@ class STD(Alpha):
 
 class KURT(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -188,8 +185,7 @@ class KURT(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -202,7 +198,7 @@ class KURT(Alpha):
 
 class SKEW(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -228,8 +224,7 @@ class SKEW(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -242,7 +237,7 @@ class SKEW(Alpha):
 
 class DELAY(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -268,8 +263,7 @@ class DELAY(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -281,7 +275,8 @@ class DELAY(Alpha):
 
 
 class DELTA(Alpha):
-    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -307,8 +302,7 @@ class DELTA(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -321,7 +315,7 @@ class DELTA(Alpha):
 
 class MAX(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -347,8 +341,7 @@ class MAX(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -361,7 +354,7 @@ class MAX(Alpha):
 
 class MIN(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -387,8 +380,7 @@ class MIN(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -401,7 +393,7 @@ class MIN(Alpha):
 
 class RANK(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -427,8 +419,7 @@ class RANK(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -441,7 +432,7 @@ class RANK(Alpha):
 
 class QTLU(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -467,8 +458,7 @@ class QTLU(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -481,7 +471,7 @@ class QTLU(Alpha):
 
 class QTLD(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -507,8 +497,7 @@ class QTLD(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -521,7 +510,7 @@ class QTLD(Alpha):
 
 class CORR(Alpha):
     def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.feature = feature
@@ -549,8 +538,7 @@ class CORR(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -564,7 +552,7 @@ class CORR(Alpha):
 class CORD(Alpha):
     # The correlation between feature change ratio and label change ratio
     def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.feature = feature
@@ -594,8 +582,7 @@ class CORD(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -608,7 +595,7 @@ class CORD(Alpha):
 
 class COV(Alpha):
     def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.feature = feature
@@ -636,8 +623,7 @@ class COV(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -650,7 +636,7 @@ class COV(Alpha):
 
 class BETA(Alpha):
     def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.feature = feature
@@ -678,8 +664,7 @@ class BETA(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -692,7 +677,7 @@ class BETA(Alpha):
 
 class REGRESSION(Alpha):
     def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int, rettype: int = 0,
-                 normalize: str = "zscore", nan_handling: bool = True):
+                 normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.feature = feature
@@ -721,8 +706,7 @@ class REGRESSION(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -734,7 +718,8 @@ class REGRESSION(Alpha):
 
 
 class PSY(Alpha):
-    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -761,8 +746,7 @@ class PSY(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -774,7 +758,7 @@ class PSY(Alpha):
 
 
 class KBAR(Alpha):
-    def __init__(self, data: pd.DataFrame, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.DataFrame, normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.norm_method = normalize
@@ -806,8 +790,7 @@ class KBAR(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -820,7 +803,7 @@ class KBAR(Alpha):
 
 class RSV(Alpha):
     def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
-                 nan_handling: bool = True):
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -849,8 +832,7 @@ class RSV(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -863,7 +845,8 @@ class RSV(Alpha):
 
 class CNTP(Alpha):
     # The percentage of days in past d days that price go up.
-    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -890,8 +873,7 @@ class CNTP(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -904,7 +886,8 @@ class CNTP(Alpha):
 
 class CNTN(Alpha):
     # The percentage of days in past d days that price go down.
-    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -931,8 +914,7 @@ class CNTN(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -944,7 +926,8 @@ class CNTN(Alpha):
 
 
 class SUMP(Alpha):
-    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -972,8 +955,7 @@ class SUMP(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -985,7 +967,8 @@ class SUMP(Alpha):
 
 
 class SUMN(Alpha):
-    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore", nan_handling: bool = True):
+    def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -1013,8 +996,7 @@ class SUMN(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
@@ -1028,7 +1010,7 @@ class SUMN(Alpha):
 class WQ_1(Alpha):
     # ts_decay_linear(ts_rank(close, 20) * cs_rank(volume) / cs_rank(returns), 15)
     def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
-                 nan_handling: bool = True):
+                 nan_handling: str = "ffill"):
         super().__init__()
         self.data = data
         self.periods = periods
@@ -1057,8 +1039,49 @@ class WQ_1(Alpha):
             self.result = cs_rank(self.result)
 
     def handle_nan(self):
-        if self.process_nan:
-            self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method="ffill").fillna(0))
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
+class WQ_2(Alpha):
+    # cs_rank(ts_corr(returns, cs_mean(returns) * ts_decay_linear(close, 15), days))
+    def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
+        super().__init__()
+        self.data = data
+        self.periods = periods
+        self.norm_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        self.data["returns"] = ts_returns(self.data["close"], 1)
+        self.data["cs_mean"] = cs_mean(self.data["returns"]) * ts_decay_linear(self.data["close"], 15)
+        if isinstance(self.periods, int):
+            self.result = cs_rank(ts_corr(self.data, "returns", "cs_mean", self.periods))
+        else:
+            for d in self.periods:
+                self.result["wq2_" + str(d)] = cs_rank(ts_corr(self.data, "returns", "cs_mean", d))
+
+    def normalize(self):
+        if self.norm_method == "zscore":
+            self.result = cs_zscore(self.result)
+        elif self.norm_method == "robust_zscore":
+            self.result = cs_robust_zscore(self.result)
+        elif self.norm_method == "scale":
+            self.result = cs_scale(self.result)
+        else:
+            self.result = cs_rank(self.result)
+
+    def handle_nan(self):
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
 
     def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
         self.call()
