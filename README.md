@@ -1,5 +1,5 @@
 # scutquant
-华南理工大学量化投资协会（华工量协）欢迎您
+[华南理工大学量化投资协会](https://github.com/ksDreamer/gzic.online/blob/main/organizations.md#%E9%87%8F%E5%8C%96%E6%8A%95%E8%B5%84%E5%8D%8F%E4%BC%9A)（华工量协）欢迎您
 
 代码和介绍见[scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant)
 
