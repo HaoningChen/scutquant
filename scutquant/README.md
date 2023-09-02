@@ -5,9 +5,13 @@
 
 ### [data](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/data.py):   
 获取数据模块, 基于akshare实现. 目前功能只有获取指数成分股数据  
+### [get_news_data](https://github.com/HaoningChen/scutquant/blob/main/scutquant/get_news_data.py):  
+获取中国的报纸新闻数据, 可用于情感分析或者研究气候不确定性等问题, 并构建另类因子  
+### [operators](https://github.com/HaoningChen/scutquant/blob/main/scutquant/operators.py):  
+为[alpha](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py)模块提供底层计算, 也可单独拿出来构建自定义因子. 该模块旨在方便用户以接近自然语言的方式构造因子  
 ### [alpha](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py): 
-因子模块, 实现了两个因子库, 一个由alpha360()函数实现, 另一个由make_factors实现.  
-前者是基础价量数据的滞后项, 作除单位处理; 后者是技术因子, 目前包含175个较为有效的因子
+因子模块, 实现了两个因子库, 一个由qlib360()函数实现, 另一个由qlib158实现.  
+前者是基础价量数据的滞后项, 作除单位处理; 后者主要是技术因子, 复现了qlib的alpha 158并做了微小改动    
 ### [scutquant](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/scutquant.py):  
 包含了scutquant包最核心的数据分析和数据处理功能, 还有一些快速建模函数(支持一键训练线性回归模型(基于sklearn), hybrid模型和lightGBM)   
 ### [models](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/models.py):  
