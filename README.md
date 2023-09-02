@@ -5,8 +5,10 @@
 
 纯代码版本(方便下载)请转到[scutquant_pure](https://github.com/chn489/scutquant_pure)
 
-
 如果有任何意见和建议，欢迎在issue区留言或者直接提pr! 如果觉得本仓库对您有用, 请点一个免费的star!  
+
+PS：协会公众号二维码如下  
+![量化投资协会qrcode](https://github.com/HaoningChen/scutquant/assets/101194077/6df8bba5-d85c-401c-9949-f3f4e8e6159a)
 
 ## 导航  
 [scutquant](https://github.com/HaoningChen/ScutQuant/tree/main/scutquant):  
