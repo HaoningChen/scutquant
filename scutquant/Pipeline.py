@@ -108,7 +108,7 @@ def get_factors(data, kwargs=None, auto_generate=False):
             "windows": [5, 10, 20, 30, 60]
         }
     kwargs["data"] = data
-    X = alpha.qlib158(data, normalize=kwargs["normalize"], fill=kwargs["fill"])
+    X = alpha.qlib158(data, normalize=kwargs["normalize"], fill=kwargs["fill"], windows=kwargs["windows"])
     return X
 
 

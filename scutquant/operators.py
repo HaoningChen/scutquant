@@ -475,7 +475,7 @@ def bigger(data1: pd.Series, data2: pd.Series) -> pd.Series:
     """
     Returns the bigger value of data1 and data2
     """
-    return data1.where(data1 > data2, data2)
+    return data1.where(data1 > data2, data1)
 
 
 def smaller(data1: pd.Series, data2: pd.Series) -> pd.Series:
