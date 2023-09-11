@@ -3,15 +3,21 @@ data:
   format: csv
   index_col:
   - datetime
-  - ts_code
-  index_names:
-  - datetime
   - instrument
+  index_names: null
   label:
     by: pct_chg
     divide: 100
   process_nan: true
-factor: null
+factor:
+  fill: false
+  normalize: false
+  windows:
+  - 5
+  - 10
+  - 20
+  - 30
+  - 60
 fit:
   model: Ensemble
   params:
@@ -19,19 +25,13 @@ fit:
   save: true
 prepare:
   deal_price: close
-  volume: vol
+  volume: volume
 process:
-  clip_data: 3
-  groupby: stock_code
-  label: label
-  label_norm: true
-  normalization: z
-  orth_data: false
-  select_features: false
+  groupby: instrument
   split:
     split_kwargs:
       train: 0.7
       valid: 0.3
     split_method: split
-    test_start_date: '2019-01-01'
+    test_start_date: '2017-01-01'
 report: null
