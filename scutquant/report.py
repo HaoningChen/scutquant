@@ -267,3 +267,52 @@ def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int =
         win_rate.append(len(t_df[t_df[c] >= 0]) / len(t_df))
     plot(data, label, title='Grouped Return', xlabel='time_id', ylabel='value', figsize=figsize)
     plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar", figsize=figsize)
+
+
+def calc_features(feature: pd.Series):
+    """
+    对于一个有多重索引[("datetime", "instrument)]的pd.Series, 分别计算:
+    (1) 每个datetime的截面上均值和标准差
+    (2) 每个datetime的unique_value占比(用于判断特征在当日是数值特征还是类别特征)
+    (3) 每个datetime的autocorr(lag=1)
+    """
+    mean = feature.groupby(level=0).mean()
+    std = feature.groupby(level=0).std()
+    unique = feature.groupby(level=0).apply(lambda x: len(x.unique()) / len(x))
+    autocorr = feature.groupby(level=0).apply(lambda x: x.autocorr(lag=1))
+    return mean, std, unique, autocorr
+
+
+def single_factor_ana(feature: pd.Series):
+    """
+    输出4张图, 从上到下分别是:
+    (1) feature的总体分布
+    (2) feature在截面上的均值和标准差
+    (3) feature每日的unique_value占比
+    (4) feature的autocorr(lag=1)
+    """
+    mean, std, unique, autocorr = calc_features(feature=feature)
+
+    fig, (ax0, ax1, ax2, ax3) = plt.subplots(nrows=4, ncols=1)
+    ax0.hist(feature, bins=100)
+    ax0.set_ylabel("count")
+
+    ax1.plot(mean, label="mean")
+    ax1.set_ylabel("mean")
+    ax1.legend()
+    ax11 = ax1.twinx()
+    ax11.plot(std, color="orange", label="std")
+    ax11.set_ylabel("std")
+
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax11.get_legend_handles_labels()
+    ax1.legend().set_visible(False)
+    ax11.legend(h1 + h2, l1 + l2)
+
+    ax2.plot(unique)
+    ax2.set_ylabel("unique")
+
+    ax3.plot(autocorr)
+    ax3.set_ylabel("autocorr")
+    ax0.set_title(feature.name)
+    plt.show()
