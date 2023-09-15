@@ -444,7 +444,7 @@ def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", 
     if split_params is None:
         split_params = {
             "data": X,
-            "test_date": None,
+            "test_start_date": None,
             "split_method": "group_split",
             "split_kwargs": {
                 "train": 0.7,
