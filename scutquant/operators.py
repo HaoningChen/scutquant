@@ -139,9 +139,11 @@ def ts_dstd(data: pd.core.groupby.SeriesGroupBy | pd.Series, n_period: int) -> p
     """
     Returns downside standard deviation of data for the past n_period days
     """
+
     def downside_std(df: pd.Series):
         downside_data = df.where(df > 0, np.nan)
         return downside_data.rolling(n_period, min_periods=2).std()
+
     if isinstance(data, pd.Series):
         return data.groupby(level=1).transform(lambda x: downside_std(x))
     else:
@@ -451,6 +453,18 @@ def cs_mean(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> p
         return res
 
 
+def cs_shrink(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
+    if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
+        data = data.groupby(level=0).transform(lambda x: x.where(x <= 3, 3 + (x - 3).div(x.max() - 3) * 0.5))
+        data = data.groupby(level=0).transform(lambda x: x.where(x >= -3, -3 + (x + 3).div(x.min() + 3) * 0.5))
+        return data
+    else:
+        res = data.transform(lambda x: x.where(x <= 3, 3 + (x - 3).div(x.max() - 3) * 0.5))
+        res = res.transform(lambda x: x.where(x >= -3, -3 + (x + 3).div(x.min() + 3) * 0.5))
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
 def sign(data: pd.Series) -> pd.Series:
     return pd.Series(np.sign(data.values), index=data.index)
 
@@ -497,7 +511,8 @@ def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
     return y - beta0 - beta * x
 
 
-def neutralize(data: pd.DataFrame, target: pd.Series, features: list[str] = None, n_jobs=-1) -> pd.DataFrame:
+def neutralize(data: pd.DataFrame | pd.Series, target: pd.Series, features: list[str] = None,
+               n_jobs=-1) -> pd.DataFrame:
     """
     在截面上对选定的features进行target中性化, 剩余因子不变
 
@@ -513,12 +528,7 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list[str] = None
     :param n_jobs: 同时调用的cpu数
     :return: pd.DataFrame, 包括中性化后的因子和未中性化的其它因子
     """
-    target = target[target.index.isin(data.index)]
-    concat_data = pd.concat([data, target], axis=1)
-    target_name = target.name
-    features = data.columns if features is None else features
-    other_cols = [c for c in data.columns if c not in features]
-    del data, target
+    RETTYPE = "df"
 
     def neutralize_single_factor(f_name: str) -> pd.Series:
         result = concat_data[[f_name, target_name]].groupby(level=0, group_keys=False).apply(
@@ -526,7 +536,22 @@ def neutralize(data: pd.DataFrame, target: pd.Series, features: list[str] = None
         result.name = f_name
         return result
 
+    if isinstance(data, pd.Series):
+        data = data.to_frame(name=data.name)
+        RETTYPE = "series"
+
+    target = target[target.index.isin(data.index)]
+    concat_data = pd.concat([data, target], axis=1)
+    target_name = target.name
+    features = data.columns if features is None else features
+    other_cols = [c for c in data.columns if c not in features]
+    del data, target
+
     factor_neu = Parallel(n_jobs=n_jobs)(delayed(neutralize_single_factor)(f) for f in features)
     data_neu = pd.concat(factor_neu, axis=1)
     del factor_neu
-    return pd.concat([data_neu, concat_data[other_cols]], axis=1)
+
+    if RETTYPE == "df":
+        return pd.concat([data_neu, concat_data[other_cols]], axis=1)
+    else:
+        return data_neu.iloc[:, 0]
