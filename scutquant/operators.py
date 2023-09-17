@@ -512,7 +512,7 @@ def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
 
 
 def neutralize(data: pd.DataFrame | pd.Series, target: pd.Series, features: list[str] = None,
-               n_jobs=-1) -> pd.DataFrame:
+               n_jobs=-1) -> pd.DataFrame | pd.Series:
     """
     在截面上对选定的features进行target中性化, 剩余因子不变
 
