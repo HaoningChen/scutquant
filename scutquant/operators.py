@@ -330,19 +330,28 @@ def ts_regression(data: pd.DataFrame, feature: str, label: str, n_periods: int, 
     :param rettype: 0 for resid, 1 for beta, 2 for alpha, 3 for y_hat, 4 for R^2
     :return:
     """
-    beta = ts_beta(data, feature, label, n_periods)
-    alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
-    predict: pd.Series = beta * data[feature] + alpha
-    resid: pd.Series = data[label] - predict
     if rettype == 0:
+        beta = ts_beta(data, feature, label, n_periods)
+        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
+        predict: pd.Series = beta * data[feature] + alpha
+        resid: pd.Series = data[label] - predict
         return resid
     elif rettype == 1:
+        beta = ts_beta(data, feature, label, n_periods)
         return beta
     elif rettype == 2:
+        beta = ts_beta(data, feature, label, n_periods)
+        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
         return alpha
     elif rettype == 3:
+        beta = ts_beta(data, feature, label, n_periods)
+        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
+        predict: pd.Series = beta * data[feature] + alpha
         return predict
     else:
+        beta = ts_beta(data, feature, label, n_periods)
+        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
+        predict: pd.Series = beta * data[feature] + alpha
         predict.name = "predict"
         concat_df = pd.concat([predict, data[label]], axis=1)
         return ts_corr(concat_df, "predict", label, n_periods) ** 2
