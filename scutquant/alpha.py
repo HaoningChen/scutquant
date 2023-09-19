@@ -1180,6 +1180,17 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     parallel_result = Parallel(n_jobs=n_jobs)(delayed(func)(*args) for func, args in tasks)
     parallel_df = pd.concat(parallel_result, axis=1)
 
+    task2 = [(MA(c_group, windows).get_factor_value, (normalize, fill)),
+             (STD(c_group, windows).get_factor_value, (normalize, fill)),
+             (MAX(c_group, windows).get_factor_value, (normalize, fill)),
+             (MIN(c_group, windows).get_factor_value, (normalize, fill)),
+             (QTLU(c_group, windows).get_factor_value, (normalize, fill)),
+             (QTLD(c_group, windows).get_factor_value, (normalize, fill))]
+    parallel_result2 = Parallel(n_jobs=n_jobs)(delayed(func)(*args) for func, args in task2)
+    parallel_df2 = pd.concat(parallel_result2, axis=1)
+    for c in parallel_df2.columns:
+        parallel_df2[c] /= price
+
     OPEN = DELAY(o_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     OPEN.columns = ["open" + str(w) for w in range(1, 6)]
     for c in OPEN.columns:
@@ -1215,14 +1226,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     for c in delta.columns:
         delta[c] /= price
 
-    ma = MA(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    for c in ma.columns:
-        ma[c] /= price
-
-    std = STD(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    for c in std.columns:
-        std[c] /= price
-
     r2 = REGRESSION(data, "open", "close", windows, rettype=4).get_factor_value(normalize=normalize, handle_nan=fill)
     r2.columns = ["rsqr" + str(w) for w in windows]
 
@@ -1230,22 +1233,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     resi.columns = ["resi" + str(w) for w in windows]
     for c in resi.columns:
         resi[c] /= price
-
-    cmax = MAX(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    for c in cmax.columns:
-        cmax[c] /= price
-
-    cmin = MIN(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    for c in cmin.columns:
-        cmin[c] /= price
-
-    qtlu = QTLU(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    for c in qtlu.columns:
-        qtlu[c] /= price
-
-    qtld = QTLD(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    for c in qtld.columns:
-        qtld[c] /= price
 
     vma = MA(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vma.columns = ["vma" + str(w) for w in windows]
@@ -1263,6 +1250,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     vsumn = SUMN(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsumn.columns = ["vsumn" + str(w) for w in windows]
 
-    features = pd.concat([OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, parallel_df, delta, ma, std, r2,
-                          resi, cmax, cmin, qtlu, qtld, vma, vstd, vsump, vsumn], axis=1)
+    features = pd.concat([OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, parallel_df, delta, r2,
+                          resi, parallel_df2, vma, vstd, vsump, vsumn], axis=1)
     return features
