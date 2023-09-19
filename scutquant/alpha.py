@@ -2,7 +2,8 @@ from .operators import *
 import pandas as pd
 
 
-def factor_neutralize(factors: pd.DataFrame | pd.Series, target: pd.Series, feature: list[str] = None) -> pd.DataFrame | pd.Series:
+def factor_neutralize(factors: pd.DataFrame | pd.Series, target: pd.Series,
+                      feature: list[str] = None) -> pd.DataFrame | pd.Series:
     return neutralize(factors, features=feature, target=target)
 
 
@@ -1148,17 +1149,8 @@ def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd
     return features
 
 
-def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, windows=None) -> pd.DataFrame:
-    """
-    复现qlib的alpha 158.
-    将一些指代不明的因子(例如rsqr, resi)和计算得不那么精确的因子(例如beta)替换成另外的表达式
-
-    :param data: 包括以下几列: open, close, high, low, volume, amount
-    :param normalize: 是否进行cs zscore标准化
-    :param fill: 是否向后填充缺失值
-    :param windows: 列表, 默认为[5, 10, 20, 30, 60]
-    :return:
-    """
+def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, windows=None,
+            n_jobs: int = -1) -> pd.DataFrame:
     if windows is None:
         windows = [5, 10, 20, 30, 60]
     o_group = data["open"].groupby(level=1)
@@ -1170,6 +1162,23 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
 
     price = data["close"]
     volume = data["volume"]
+
+    vol_mask = data["volume"].transform(lambda x: x if x > 0 else np.nan)
+    data["log_volume"] = log(vol_mask)
+
+    tasks = [(KBAR(data).get_factor_value, (normalize, fill)),
+             (BETA(data, "open", "close", windows).get_factor_value, (normalize, fill)),
+             (RANK(c_group, windows).get_factor_value, (normalize, fill)),
+             (RSV(data, windows).get_factor_value, (normalize, fill)),
+             (CORR(data, "close", "log_volume", windows).get_factor_value, (normalize, fill)),
+             (CORD(data, "close", "volume", windows).get_factor_value, (normalize, fill)),
+             (CNTP(price, windows).get_factor_value, (normalize, fill)),
+             (CNTN(price, windows).get_factor_value, (normalize, fill)),
+             (SUMP(price, windows).get_factor_value, (normalize, fill)),
+             (SUMN(price, windows).get_factor_value, (normalize, fill))]
+
+    parallel_result = Parallel(n_jobs=n_jobs)(delayed(func)(*args) for func, args in tasks)
+    parallel_df = pd.concat(parallel_result, axis=1)
 
     OPEN = DELAY(o_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
     OPEN.columns = ["open" + str(w) for w in range(1, 6)]
@@ -1201,8 +1210,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     for c in AMOUNT.columns:
         AMOUNT[c] /= price * volume
 
-    k = KBAR(data).get_factor_value(normalize=normalize, handle_nan=fill)
-
     delta = DELTA(data["close"], periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
     delta.columns = ["roc" + str(w) for w in windows]
     for c in delta.columns:
@@ -1215,8 +1222,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     std = STD(c_group, periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
     for c in std.columns:
         std[c] /= price
-
-    beta = BETA(data, "open", "close", windows).get_factor_value(normalize=normalize, handle_nan=fill)
 
     r2 = REGRESSION(data, "open", "close", windows, rettype=4).get_factor_value(normalize=normalize, handle_nan=fill)
     r2.columns = ["rsqr" + str(w) for w in windows]
@@ -1242,20 +1247,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     for c in qtld.columns:
         qtld[c] /= price
 
-    rank = RANK(c_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    rsv = RSV(data, windows).get_factor_value(normalize=normalize, handle_nan=fill)
-
-    vol_mask = data["volume"].transform(lambda x: x if x > 0 else np.nan)
-    data["log_volume"] = log(vol_mask)
-    corr = CORR(data, "close", "log_volume", windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    del data["log_volume"], vol_mask
-
-    cord = CORD(data, "close", "volume", windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    cntp = CNTP(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    cntn = CNTN(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    sump = SUMP(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    sumn = SUMN(data["close"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
-
     vma = MA(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vma.columns = ["vma" + str(w) for w in windows]
     for c in vma.columns:
@@ -1272,8 +1263,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     vsumn = SUMN(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsumn.columns = ["vsumn" + str(w) for w in windows]
 
-    features = pd.concat(
-        [OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, k, delta, ma, std, beta, r2, resi, cmax, cmin, qtlu, qtld, rank, rsv,
-         corr, cord, cntp, cntn, sump, sumn, vma, vstd, vsump, vsumn],
-        axis=1)
+    features = pd.concat([OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, parallel_df, delta, ma, std, r2,
+                          resi, cmax, cmin, qtlu, qtld, vma, vstd, vsump, vsumn], axis=1)
     return features
