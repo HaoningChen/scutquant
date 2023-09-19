@@ -406,6 +406,30 @@ def ts_decay_linear(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: i
         return res
 
 
+def ts_argmax(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: int) -> pd.Series:
+    def argmax(feature: pd.Series) -> pd.Series:
+        return feature.rolling(n_period).apply(lambda x: np.argmax(x))
+
+    if isinstance(data, pd.Series):
+        return data.groupby(level=1).transform(lambda x: argmax(x))
+    else:
+        res = data.transform(lambda x: argmax(x))
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
+def ts_argmin(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: int) -> pd.Series:
+    def argmin(feature: pd.Series) -> pd.Series:
+        return feature.rolling(n_period).apply(lambda x: np.argmin(x))
+
+    if isinstance(data, pd.Series):
+        return data.groupby(level=1).transform(lambda x: argmin(x))
+    else:
+        res = data.transform(lambda x: argmin(x))
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
 def cs_rank(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     """
     Ranks the input among all the instruments and returns an equally distributed number between 0.0 and 1.0.
