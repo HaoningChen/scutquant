@@ -41,6 +41,38 @@ def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime',
     return result.set_index(index)
 
 
+def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, DT: str = "datetime") -> pd.DataFrame:
+    """
+    通过给定df1的lookupkey, 在df2中查找符合条件的值并合并到df1中. 可用于处理另类数据、基本面数据与量价数据的合并
+
+    Example:
+
+    假设我们有两个datetime和instrument都不完全匹配的DataFrame, 一个是量价数据集df, 另一个是新闻数据集news, 它们的索引都是
+    [(datetime, instrument)], 现在使用vlookup将news的计算结果按照instrument模糊匹配, 并按照datetime合并到df上:
+
+    news_volume = news.groupby(["datetime", "instrument"])["title].count().to_frame(name="snt_volume")
+    merge_df = vlookup(df, news_volume, lookup_key="instrument")
+    """
+
+    def match(x):
+        unique = df2[lookup_key].unique()
+        val = ''
+        for u in unique:
+            if u in x:
+                val = u
+                break
+        return val
+
+    df1.reset_index(inplace=True)
+    df2.reset_index(inplace=True)
+    original_keys = df1[lookup_key].copy()
+    df1[lookup_key] = df1[lookup_key].apply(match)
+    merged = pd.merge(df1, df2, on=[DT, lookup_key], how="outer")
+    merged[lookup_key] = original_keys
+    merge = merged.set_index([DT, lookup_key]).sort_index()
+    return merge[~merge.index.get_level_values(1).isnull()]
+
+
 ####################################################
 # 特征工程
 ####################################################
