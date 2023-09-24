@@ -534,7 +534,7 @@ def smaller(data1: pd.Series, data2: pd.Series) -> pd.Series:
 
 def inf_mask(data: pd.Series) -> pd.Series:
     """
-    Inplace inf with nan
+    Replace inf with nan
     """
     return data.where(data != np.inf, np.nan)
 
