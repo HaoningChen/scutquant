@@ -317,6 +317,14 @@ def pipeline(target_dir="", all_kwargs=None, auto_generate=True, save_prediction
 
 
 def all_factors_ana(target_dir="", kwargs=None, auto_generate=True):
+    """
+    与all_kwargs.yaml不同的是, 有人可能会先算好因子再执行ana, 因此factor_kwargs多了个calculate参数来决定是否计算因子
+
+    :param target_dir:
+    :param kwargs:
+    :param auto_generate:
+    :return:
+    """
     # 初始化kwargs
     if kwargs is None:
         with open(target_dir + "/factors_ana.yaml", 'r') as file:

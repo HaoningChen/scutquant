@@ -41,7 +41,7 @@ def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime',
     return result.set_index(index)
 
 
-def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, DT: str = "datetime") -> pd.DataFrame:
+def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, datetime: str = "datetime", raw: bool=False) -> pd.DataFrame:
     """
     通过给定df1的lookupkey, 在df2中查找符合条件的值并合并到df1中. 可用于处理另类数据、基本面数据与量价数据的合并
 
@@ -56,7 +56,7 @@ def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, DT: str = "da
 
     def match(x):
         unique = df2[lookup_key].unique()
-        val = ''
+        val = np.nan
         for u in unique:
             if u in x:
                 val = u
@@ -67,10 +67,17 @@ def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, DT: str = "da
     df2.reset_index(inplace=True)
     original_keys = df1[lookup_key].copy()
     df1[lookup_key] = df1[lookup_key].apply(match)
-    merged = pd.merge(df1, df2, on=[DT, lookup_key], how="outer")
-    merged[lookup_key] = original_keys
-    merge = merged.set_index([DT, lookup_key]).sort_index()
-    return merge[~merge.index.get_level_values(1).isnull()]
+    merged = pd.merge(df1, df2, on=[datetime, lookup_key], how="outer")
+    if raw:
+        merged["key"] = df1[lookup_key]
+        merged[lookup_key] = original_keys
+        merge = merged.set_index([datetime, lookup_key, "key"]).sort_index()
+        merge = merge[~merge.index.get_level_values(1).isnull()]
+        return merge[~merge.index.get_level_values(2).isnull()]
+    else:
+        merged[lookup_key] = original_keys
+        merge = merged.set_index([datetime, lookup_key]).sort_index()
+        return merge[~merge.index.get_level_values(1).isnull()]
 
 
 ####################################################
