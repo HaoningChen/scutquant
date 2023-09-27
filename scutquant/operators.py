@@ -581,6 +581,7 @@ def neutralize(data: pd.DataFrame | pd.Series, target: pd.Series, features: list
         RETTYPE = "series"
 
     target = target[target.index.isin(data.index)]
+    target.name = "label"
     concat_data = pd.concat([data, target], axis=1)
     target_name = target.name
     features = data.columns if features is None else features
