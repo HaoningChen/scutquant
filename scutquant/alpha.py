@@ -510,10 +510,9 @@ class QTLD(Alpha):
 
 
 class CORR(Alpha):
-    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+    def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
                  normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
-        self.data = data
         self.feature = feature
         self.label = label
         self.periods = periods
@@ -523,10 +522,10 @@ class CORR(Alpha):
 
     def call(self):
         if isinstance(self.periods, int):
-            self.result = ts_corr(self.data, self.feature, self.label, self.periods)
+            self.result = ts_corr(self.feature, self.label, self.periods)
         else:
             for d in self.periods:
-                self.result["corr" + str(d)] = ts_corr(self.data, self.feature, self.label, d)
+                self.result["corr" + str(d)] = ts_corr(self.feature, self.label, d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -552,10 +551,9 @@ class CORR(Alpha):
 
 class CORD(Alpha):
     # The correlation between feature change ratio and label change ratio
-    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+    def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
                  normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
-        self.data = data
         self.feature = feature
         self.label = label
         self.periods = periods
@@ -564,13 +562,13 @@ class CORD(Alpha):
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
-        self.data["fd"] = self.data[self.feature] / ts_delay(self.data[self.feature], 1)
-        self.data["ld"] = self.data[self.label] / ts_delay(self.data[self.label], 1)
+        fd = self.feature / ts_delay(self.feature, 1)
+        ld = self.label / ts_delay(self.label, 1)
         if isinstance(self.periods, int):
-            self.result = ts_corr(self.data, "fd", "ld", self.periods)
+            self.result = ts_corr(fd, ld, self.periods)
         else:
             for d in self.periods:
-                self.result["cord" + str(d)] = ts_corr(self.data, "fd", "ld", d)
+                self.result["cord" + str(d)] = ts_corr(fd, ld, d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -595,10 +593,9 @@ class CORD(Alpha):
 
 
 class COV(Alpha):
-    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+    def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
                  normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
-        self.data = data
         self.feature = feature
         self.label = label
         self.periods = periods
@@ -608,10 +605,10 @@ class COV(Alpha):
 
     def call(self):
         if isinstance(self.periods, int):
-            self.result = ts_cov(self.data, self.feature, self.label, self.periods)
+            self.result = ts_cov(self.feature, self.label, self.periods)
         else:
             for d in self.periods:
-                self.result["cov" + str(d)] = ts_cov(self.data, self.feature, self.label, d)
+                self.result["cov" + str(d)] = ts_cov(self.feature, self.label, d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -636,10 +633,9 @@ class COV(Alpha):
 
 
 class BETA(Alpha):
-    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int,
+    def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
                  normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
-        self.data = data
         self.feature = feature
         self.label = label
         self.periods = periods
@@ -649,10 +645,10 @@ class BETA(Alpha):
 
     def call(self):
         if isinstance(self.periods, int):
-            self.result = ts_beta(self.data, self.feature, self.label, self.periods)
+            self.result = ts_beta(self.feature, self.label, self.periods)
         else:
             for d in self.periods:
-                self.result["beta" + str(d)] = ts_beta(self.data, self.feature, self.label, d)
+                self.result["beta" + str(d)] = ts_beta(self.feature, self.label, d)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -677,10 +673,9 @@ class BETA(Alpha):
 
 
 class REGRESSION(Alpha):
-    def __init__(self, data: pd.DataFrame, feature: str, label: str, periods: list[int] | int, rettype: int = 0,
+    def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int, rettype: int = 0,
                  normalize: str = "zscore", nan_handling: str = "ffill"):
         super().__init__()
-        self.data = data
         self.feature = feature
         self.label = label
         self.periods = periods
@@ -691,10 +686,10 @@ class REGRESSION(Alpha):
 
     def call(self):
         if isinstance(self.periods, int):
-            self.result = ts_regression(self.data, self.feature, self.label, self.periods, rettype=self.rettype)
+            self.result = ts_regression(self.feature, self.label, self.periods, rettype=self.rettype)
         else:
             for d in self.periods:
-                self.result["reg" + str(d)] = ts_regression(self.data, self.feature, self.label, d, self.rettype)
+                self.result["reg" + str(d)] = ts_regression(self.feature, self.label, d, self.rettype)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -1066,10 +1061,10 @@ class WQ_2(Alpha):
         self.data["returns"] = ts_returns(self.data["close"], 1)
         self.data["cs_mean"] = cs_mean(self.data["returns"]) * ts_decay_linear(self.data["close"], 15)
         if isinstance(self.periods, int):
-            self.result = cs_rank(ts_corr(self.data, "returns", "cs_mean", self.periods))
+            self.result = cs_rank(ts_corr(self.data["returns"], self.data["cs_mean"], self.periods))
         else:
             for d in self.periods:
-                self.result["wq2_" + str(d)] = cs_rank(ts_corr(self.data, "returns", "cs_mean", d))
+                self.result["wq2_" + str(d)] = cs_rank(ts_corr(self.data["returns"], self.data["cs_mean"], d))
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -1164,14 +1159,13 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     volume = data["volume"]
 
     vol_mask = data["volume"].transform(lambda x: x if x > 0 else np.nan)
-    data["log_volume"] = log(vol_mask)
 
     tasks = [(KBAR(data).get_factor_value, (normalize, fill)),
-             (BETA(data, "open", "close", windows).get_factor_value, (normalize, fill)),
+             (BETA(data["open"], data["close"], windows).get_factor_value, (normalize, fill)),
              (RANK(c_group, windows).get_factor_value, (normalize, fill)),
              (RSV(data, windows).get_factor_value, (normalize, fill)),
-             (CORR(data, "close", "log_volume", windows).get_factor_value, (normalize, fill)),
-             (CORD(data, "close", "volume", windows).get_factor_value, (normalize, fill)),
+             (CORR(data["close"], log(vol_mask), windows).get_factor_value, (normalize, fill)),
+             (CORD(data["close"], data["volume"], windows).get_factor_value, (normalize, fill)),
              (CNTP(price, windows).get_factor_value, (normalize, fill)),
              (CNTN(price, windows).get_factor_value, (normalize, fill)),
              (SUMP(price, windows).get_factor_value, (normalize, fill)),
@@ -1226,10 +1220,10 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     for c in delta.columns:
         delta[c] /= price
 
-    r2 = REGRESSION(data, "open", "close", windows, rettype=4).get_factor_value(normalize=normalize, handle_nan=fill)
+    r2 = REGRESSION(data["open"], data["close"], windows, rettype=4).get_factor_value(normalize=normalize, handle_nan=fill)
     r2.columns = ["rsqr" + str(w) for w in windows]
 
-    resi = REGRESSION(data, "open", "close", windows, rettype=0).get_factor_value(normalize=normalize, handle_nan=fill)
+    resi = REGRESSION(data["open"], data["close"], windows, rettype=0).get_factor_value(normalize=normalize, handle_nan=fill)
     resi.columns = ["resi" + str(w) for w in windows]
     for c in resi.columns:
         resi[c] /= price

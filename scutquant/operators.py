@@ -276,85 +276,70 @@ def ts_min_diff(data: pd.Series, n_period: int) -> pd.Series:
     return data - ts_min(data, n_period)
 
 
-def ts_corr(data: pd.DataFrame, feature: str, label: str, n_period: int) -> pd.Series:
+def ts_corr(x1: pd.Series, x2: pd.Series, n_period: int) -> pd.Series:
     """
     Returns correlation of data[feature] and data[label] for the past n_period days
-
-    :param data: pd.DataFrame, must include columns feature and label
-    :param feature:
-    :param label:
-    :param n_period:
-    :return:
     """
-    corr = data.groupby(level=1).apply(lambda x: x[feature].rolling(n_period).corr(x[label])).reset_index(0, drop=True)
-    return corr.sort_index()
+    x1.name = "feature"
+    x2.name = "label"
+    concat_df = pd.concat([x1, x2], axis=1)
+    res = concat_df.groupby(level=1).apply(lambda x: x["feature"].rolling(n_period).corr(x["label"])).reset_index(0, drop=True)
+    return res.sort_index()
 
 
-def ts_cov(data: pd.DataFrame, feature: str, label: str, n_period: int) -> pd.Series:
+def ts_cov(x1: pd.Series, x2: pd.Series, n_period: int) -> pd.Series:
     """
     Returns covariance of data[feature] and data[label] for the past n_period days
-
-    :param data: pd.DataFrame, must include columns feature and label
-    :param feature:
-    :param label:
-    :param n_period:
-    :return:
     """
-    cov = data.groupby(level=1).apply(lambda x: x[feature].rolling(n_period).cov(x[label])).reset_index(0, drop=True)
+    x1.name = "feature"
+    x2.name = "label"
+    concat_df = pd.concat([x1, x2], axis=1)
+    cov = concat_df.groupby(level=1).apply(lambda x: x["feature"].rolling(n_period).cov(x["label"])).reset_index(0, drop=True)
     return cov.sort_index()
 
 
-def ts_beta(data: pd.DataFrame, feature: str, label: str, n_period: int) -> pd.Series:
+def ts_beta(x1: pd.Series, x2: pd.Series, n_period: int) -> pd.Series:
     """
     Returns beta of data[feature] and data[label] for the past n_period days
-
-    :param data: pd.DataFrame, must include columns feature and label
-    :param feature:
-    :param label:
-    :param n_period:
-    :return:
     """
-    cov = ts_cov(data, feature, label, n_period)
-    var = ts_variance(data[feature], n_period)
+    cov = ts_cov(x1, x2, n_period)
+    var = ts_variance(x1, n_period)
     return cov / var
 
 
-def ts_regression(data: pd.DataFrame, feature: str, label: str, n_periods: int, rettype: int = 0) -> pd.Series:
+def ts_regression(x1: pd.Series, x2: pd.Series, n_periods: int, rettype: int = 0) -> pd.Series:
     """
     Returns results of linear model y = beta * x + alpha + resid
 
-    :param data:
-    :param feature:
-    :param label:
+    :param x1:
+    :param x2:
     :param n_periods:
     :param rettype: 0 for resid, 1 for beta, 2 for alpha, 3 for y_hat, 4 for R^2
     :return:
     """
     if rettype == 0:
-        beta = ts_beta(data, feature, label, n_periods)
-        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
-        predict: pd.Series = beta * data[feature] + alpha
-        resid: pd.Series = data[label] - predict
+        beta = ts_beta(x1, x2, n_periods)
+        alpha: pd.Series = ts_mean(x2, n_periods) - beta * ts_mean(x1, n_periods)
+        predict: pd.Series = beta * x1 + alpha
+        resid: pd.Series = x2 - predict
         return resid
     elif rettype == 1:
-        beta = ts_beta(data, feature, label, n_periods)
+        beta = ts_beta(x1, x2, n_periods)
         return beta
     elif rettype == 2:
-        beta = ts_beta(data, feature, label, n_periods)
-        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
+        beta = ts_beta(x1, x2, n_periods)
+        alpha: pd.Series = ts_mean(x2, n_periods) - beta * ts_mean(x1, n_periods)
         return alpha
     elif rettype == 3:
-        beta = ts_beta(data, feature, label, n_periods)
-        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
-        predict: pd.Series = beta * data[feature] + alpha
+        beta = ts_beta(x1, x2, n_periods)
+        alpha: pd.Series = ts_mean(x2, n_periods) - beta * ts_mean(x1, n_periods)
+        predict: pd.Series = beta * x1 + alpha
         return predict
     else:
-        beta = ts_beta(data, feature, label, n_periods)
-        alpha: pd.Series = ts_mean(data[label], n_periods) - beta * ts_mean(data[feature], n_periods)
-        predict: pd.Series = beta * data[feature] + alpha
-        predict.name = "predict"
-        concat_df = pd.concat([predict, data[label]], axis=1)
-        return ts_corr(concat_df, "predict", label, n_periods) ** 2
+        beta = ts_beta(x1, x2, n_periods)
+        alpha: pd.Series = ts_mean(x2, n_periods) - beta * ts_mean(x1, n_periods)
+        predict: pd.Series = beta * x1 + alpha
+        return ts_corr(predict, x2, n_periods) ** 2
 
 
 def ts_pos_count(data: pd.Series, n_period: int) -> pd.Series:
