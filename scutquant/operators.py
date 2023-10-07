@@ -276,14 +276,19 @@ def ts_min_diff(data: pd.Series, n_period: int) -> pd.Series:
     return data - ts_min(data, n_period)
 
 
-def ts_corr(x1: pd.Series, x2: pd.Series, n_period: int) -> pd.Series:
+def ts_corr(x1: pd.Series, x2: pd.Series, n_period: int, rank: bool = False) -> pd.Series:
     """
     Returns correlation of data[feature] and data[label] for the past n_period days
     """
     x1.name = "feature"
     x2.name = "label"
     concat_df = pd.concat([x1, x2], axis=1)
-    res = concat_df.groupby(level=1).apply(lambda x: x["feature"].rolling(n_period).corr(x["label"])).reset_index(0, drop=True)
+    if rank:
+        res = concat_df.groupby(level=1).apply(
+            lambda x: x["feature"].rolling(n_period).corr(x["label"], method="spearman")).reset_index(0, drop=True)
+    else:
+        res = concat_df.groupby(level=1).apply(
+            lambda x: x["feature"].rolling(n_period).corr(x["label"])).reset_index(0, drop=True)
     return res.sort_index()
 
 
@@ -294,7 +299,8 @@ def ts_cov(x1: pd.Series, x2: pd.Series, n_period: int) -> pd.Series:
     x1.name = "feature"
     x2.name = "label"
     concat_df = pd.concat([x1, x2], axis=1)
-    cov = concat_df.groupby(level=1).apply(lambda x: x["feature"].rolling(n_period).cov(x["label"])).reset_index(0, drop=True)
+    cov = concat_df.groupby(level=1).apply(lambda x: x["feature"].rolling(n_period).cov(x["label"])).reset_index(0,
+                                                                                                                 drop=True)
     return cov.sort_index()
 
 
@@ -471,6 +477,51 @@ def cs_mean(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> p
         return res
 
 
+def cs_std(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
+    if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
+        return data.groupby(level=0).transform(lambda x: x.std())
+    else:
+        res: pd.Series = data.transform(lambda x: x.std())
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
+def cs_variance(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
+    if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
+        return data.groupby(level=0).transform(lambda x: x.var())
+    else:
+        res: pd.Series = data.transform(lambda x: x.var())
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
+def cs_cov(x1: pd.Series, x2: pd.Series) -> pd.Series:
+    x1.name = "feature"
+    x2.name = "label"
+    concat_df = pd.concat([x1, x2], axis=1)
+    ones = pd.Series(1, index=x1.index)
+    res = concat_df.groupby(level=0).apply(lambda x: x["feature"].cov(x["label"]))
+    return res / ones
+
+
+def cs_corr(x1: pd.Series, x2: pd.Series, rank: bool = False) -> pd.Series:
+    x1.name = "feature"
+    x2.name = "label"
+    concat_df = pd.concat([x1, x2], axis=1)
+    ones = pd.Series(1, index=x1.index)
+    if rank:
+        res = concat_df.groupby(level=0).apply(lambda x: x["feature"].corr(x["label"], method="spearman"))
+    else:
+        res = concat_df.groupby(level=0).apply(lambda x: x["feature"].corr(x["label"]))
+    return res / ones
+
+
+def cs_beta(x1: pd.Series, x2: pd.Series) -> pd.Series:
+    cov = cs_cov(x1, x2)
+    var = cs_variance(x1)
+    return cov / var
+
+
 def cs_shrink(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
         data = data.groupby(level=0).transform(lambda x: x.where(x <= 3, 3 + (x - 3).div(x.max() - 3) * 0.5))
@@ -521,7 +572,8 @@ def inf_mask(data: pd.Series) -> pd.Series:
     """
     Replace inf with nan
     """
-    return data.where(data != np.inf, np.nan)
+    data = data.where(data != np.inf, np.nan)
+    return data.where(data != -np.inf, np.nan)
 
 
 def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:

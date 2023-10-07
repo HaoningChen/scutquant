@@ -720,13 +720,10 @@ class hybrid:
     def predict(self, x_test: pd.DataFrame) -> list:
         if self.weight is None:
             self.weight = [0.4, 0.6]
-        pred_x = self.xgb_model.predict(x_test)
-        pred_l = self.lin_model.predict(x_test)
-        pred = []
-        for i in range(0, len(pred_x)):
-            pred.append(self.weight[0] * pred_l[i] + self.weight[1] * pred_x[i])
-        # print(pred[0:5])
-        return pred
+        pred_x = pd.Series(self.xgb_model.predict(x_test))
+        pred_l = pd.Series(self.lin_model.predict(x_test))
+        pred = self.weight[0] * pred_l + self.weight[1] * pred_x
+        return pred.values
 
     def save(self, target_dir: str):
         pickle.dump(self.lin_model, file=open(target_dir + '/linear.pkl', 'wb'))
@@ -755,7 +752,8 @@ class hybrid:
 
 def auto_lgbm(x_train: pd.DataFrame, y_train: pd.Series | pd.DataFrame, x_valid: pd.DataFrame,
               y_valid: pd.Series | pd.DataFrame, early_stopping: int = 30, verbose_eval: int = 20,
-              lgb_params: dict = None, num_boost_round: int = 1000, evals_result: dict = None):
+              lgb_params: dict = None, num_boost_round: int = 1000, evals_result: dict = None,
+              explain=False):
     if evals_result is None:
         evals_result = {}
     if lgb_params is None:
@@ -784,6 +782,8 @@ def auto_lgbm(x_train: pd.DataFrame, y_train: pd.Series | pd.DataFrame, x_valid:
         valid_names=["train", "valid"],
         callbacks=[early_stopping_callback, verbose_eval_callback, evals_result_callback],
     )
+    if explain:
+        lgb.plot_importance(model)
     return model
 
 

@@ -55,7 +55,7 @@ class DNN:
 
     def predict(self, x_test):
         predict = self.model.predict(x_test)
-        return predict
+        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/dnn")
@@ -105,7 +105,7 @@ class LSTM:
 
     def predict(self, x_test):
         predict = self.model.predict(x_test)
-        return predict
+        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/lstm")
@@ -156,7 +156,7 @@ class Bi_LSTM:
 
     def predict(self, x_test):
         predict = self.model.predict(x_test)
-        return predict
+        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/bi-lstm")
@@ -224,7 +224,7 @@ class Attention:
 
     def predict(self, x_test):
         predict = self.model.predict(x_test)
-        return predict
+        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/attention")
@@ -288,7 +288,7 @@ class CNN:
     def predict(self, x_test):
         x_test = x_test.values.reshape(-1, x_test.shape[1], 1)
         predict = self.model.predict(x_test)
-        return predict
+        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/cnn")
