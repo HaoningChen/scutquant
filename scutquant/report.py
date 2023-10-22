@@ -44,12 +44,16 @@ def information_ratio(ret: pd.Series | pd.DataFrame, benchmark: pd.Series | pd.D
     return (ret_copy.mean() - benchmark_copy.mean()) / ret_copy.std()
 
 
-def calculate_mdd(data: pd.Series) -> pd.Series:
+def calc_drawdown(data: pd.Series) -> pd.Series:
     """
     :param data: 累计收益率序列
     :return: 从开始到目前的回撤
     """
-    return (data - data.cummax()) / data.cummax()
+    if data.values[0] < 0.5:  # 如果是从0开始则需要+1然后计算, 从1开始则可以直接计算
+        data_ = data + 1
+        return (data_ - data_.cummax()) / data_.cummax()
+    else:
+        return (data - data.cummax()) / data.cummax()
 
 
 def annualized_return(data: pd.Series, freq: float = 1) -> float:
@@ -155,8 +159,8 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
             days += 1
     days /= len(acc_ret)
 
-    acc_mdd = calculate_mdd(pd.Series(acc_ret) + 1)
-    ben_mdd = calculate_mdd(pd.Series(ben_ret) + 1)
+    acc_mdd = calc_drawdown(pd.Series(acc_ret))
+    ben_mdd = calc_drawdown(pd.Series(ben_ret))
 
     ret = pd.Series(acc_ret)  # 累计收益率
     ben = pd.Series(ben_ret)  # benchmark的累计收益率
@@ -184,7 +188,7 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
     print('Cumulative Excess Rate of Return:', excess_ret[-1], '\n')
     print('Max Drawdown:', acc_mdd.min())
     print('Max Drawdown(Benchmark):', ben_mdd.min())
-    print('Max Drawdown(Excess Return):', calculate_mdd(pd.Series(excess_ret) + 1).min(), '\n')
+    print('Max Drawdown(Excess Return):', calc_drawdown(pd.Series(excess_ret) + 1).min(), '\n')
     print('Sharpe Ratio:', sharpe)
     print('Sortino Ratio:', sortino)
     print('Information Ratio:', inf_ratio, '\n')

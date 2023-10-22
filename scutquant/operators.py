@@ -22,7 +22,7 @@ example:
 
 from operators import * 
 
-factor = cs_zscore(ts_rank(ts_corr(df, "close", "volume", 15), 15))
+factor = cs_zscore(ts_rank(ts_corr(df["close"], df["volume"], 15), 15))
 
 """
 
@@ -421,6 +421,24 @@ def ts_argmin(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: int) ->
         return res
 
 
+def ts_backfill(data: pd.Series | pd.core.groupby.SeriesGroupBy) -> pd.Series:
+    if isinstance(data, pd.Series):
+        return data.groupby(level=1).transform(lambda x: x.fillna(method="bfill"))
+    else:
+        res = data.transform(lambda x: x.fillna(method="bfill"))
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
+def ts_ffill(data: pd.Series | pd.core.groupby.SeriesGroupBy) -> pd.Series:
+    if isinstance(data, pd.Series):
+        return data.groupby(level=1).transform(lambda x: x.fillna(method="ffill"))
+    else:
+        res = data.transform(lambda x: x.fillna(method="ffill"))
+        res.index.names = ["datetime", "instrument"]
+        return res
+
+
 def cs_rank(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     """
     Ranks the input among all the instruments and returns an equally distributed number between 0.0 and 1.0.
@@ -532,6 +550,10 @@ def cs_shrink(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) ->
         res = res.transform(lambda x: x.where(x >= -3, -3 + (x + 3).div(x.min() + 3) * 0.5))
         res.index.names = ["datetime", "instrument"]
         return res
+
+
+def mean(data1: pd.Series, data2: pd.Series) -> pd.Series:
+    return (data1 + data2) / 2
 
 
 def sign(data: pd.Series) -> pd.Series:

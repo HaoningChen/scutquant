@@ -330,7 +330,7 @@ class SigmaStrategy(BaseStrategy):
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
 
-    def to_signal(self, data, pred="predict", index_level="code", cash_available=None):
+    def to_saignal(self, data, pred="predict", index_level="code", cash_available=None):
         price = get_price(data, "price")
         volume = get_vol(data, "volume")
         mean = data[pred].values.mean()
@@ -344,7 +344,8 @@ class SigmaStrategy(BaseStrategy):
                          cash_available=cash_available, max_volume=self.max_volume)
 
         sell_dict = {}
-        if not self.buy_only:
+        if not self\
+                .buy_only:
             sell_ = mean - self.sigma * std
             data_sell = data[data[pred] <= sell_]
             data_sell = data_sell[data_sell[pred] <= self.sell]

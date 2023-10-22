@@ -1,4 +1,5 @@
 from .operators import *
+from .report import calc_drawdown
 import pandas as pd
 
 
@@ -16,8 +17,8 @@ def market_neutralize(x: pd.Series, long_only: bool = False) -> pd.Series:
     这样处理后每支股票会获得一个权重, 代表着资金的方向和数量(例如0.5代表半仓做多, -0.25代表1/4仓做空),
     且截面上的权重之和为0, 绝对值之和为1.
     """
-    mean = x.groupby(level=0).mean()
-    x -= mean
+    _mean = x.groupby(level=0).mean()
+    x -= _mean
     if long_only:  # 考虑到A股有做空限制, 因此将权重为负的股票(即做空的股票)的权重调整为0(即纯多头), 并相应调整多头的权重
         x[x.values < 0] = 0
         abs_sum = x[x.values > 0].groupby(level=0).sum()
@@ -25,6 +26,13 @@ def market_neutralize(x: pd.Series, long_only: bool = False) -> pd.Series:
         abs_sum = abs(x).groupby(level=0).sum()
     x /= abs_sum
     return x
+
+
+def calc_factor_turnover(x: pd.Series) -> pd.Series:
+    factor_neu = market_neutralize(x, long_only=False)
+    instrument_to = abs(factor_neu.groupby(level=1).diff())
+    instrument_to.dropna(inplace=True)
+    return instrument_to.groupby(level=0).sum()
 
 
 def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool = False) -> pd.Series:
@@ -43,6 +51,54 @@ def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool =
     portfolio = daily_return.cumprod()
     portfolio.index = pd.to_datetime(portfolio.index)
     return portfolio
+
+
+def calc_fitness(sharpe: float, returns: float, turnover: float) -> float:
+    """
+    参考 https://platform.worldquantbrain.com/learn/documentation/discover-brain/intermediate-pack-part-1
+    """
+    return sharpe * ((abs(returns) / max(turnover, 0.125)) ** 0.5)
+
+
+def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle_nan: bool = True) -> dict:
+    """
+    :param factor:
+    :param label:
+    :param metrics: list[str] = ["ic", "return", "turnover", "sharpe", "ir", "fitness"] 有些指标的计算必须依赖其它指标
+    :param handle_nan:
+    :return:
+    """
+    if metrics is None:
+        metrics = ["ic", "return", "turnover", "sharpe", "ir", "fitness"]
+    if handle_nan:
+        label.dropna(inplace=True)
+        factor = factor[factor.index.isin(label.index)]
+        label = label[label.index.isin(factor.index)]
+    result: dict = {}
+    if "ic" in metrics:  # information coefficient
+        result["ic"] = cs_corr(factor, label, rank=True).groupby(level=0).mean()
+        result["ic_mean"] = result["ic"].mean()
+        result["icir"] = result["ic"].mean() / result["ic"].std()
+        result["t-stat"] = result["icir"] * (len(result["ic"]) ** 0.5)
+    if "return" in metrics:
+        result["return"] = get_factor_portfolio(factor, label)
+        benchmark: pd.Series = label.groupby(level=0).mean()
+        benchmark = benchmark[benchmark.index.isin(result["return"].index)]
+        result["benchmark"] = (benchmark + 1).cumprod()
+        result["excess_return"] = result["return"] - result["benchmark"]
+        result["drawdown"] = calc_drawdown(result["return"])
+        result["excess_return_drawdown"] = calc_drawdown(result["excess_return"])
+        result["max_drawdown"] = result["drawdown"].min()
+        result["excess_return_max_drawdown"] = result["excess_return_drawdown"].min()
+    if "turnover" in metrics:
+        result["turnover"] = calc_factor_turnover(factor)
+    if "sharpe" in metrics:
+        result["sharpe"] = result["return"].mean() / result["return"].std()
+    if "ir" in metrics:  # information ratio
+        result["ir"] = result["excess_return"].mean() / result["return"].std()
+    if "fitness" in metrics:
+        result["fitness"] = calc_fitness(result["sharpe"], result["return"].values[-1] - 1, result["turnover"].mean())
+    return result
 
 
 class Alpha:
@@ -1088,6 +1144,41 @@ class WQ_2(Alpha):
         return self.result
 
 
+class CustomizedAlpha(Alpha):
+    def __init__(self, data: pd.Series | pd.DataFrame, expression: list[str] | str, normalize: str = "zscore",
+                 nan_handling: str = "ffill"):
+        """
+        eg:
+        factor = CustomizedAlpha(data=df, expression=[f"ts_std(data['{x}'], 5)" for x in df.columns]).get_factor_value()
+        """
+        super().__init__()
+        self.data = data
+        self.expression = expression
+        self.norma_method = normalize
+        self.process_nan = nan_handling
+        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
+
+    def call(self):
+        if isinstance(self.expression, list):
+            factors = []
+            for e in self.expression:
+                factors.append(eval(e.replace("data", "self.data")))
+            self.result: pd.DataFrame = pd.concat(factors, axis=1)
+        else:
+            self.result: pd.Series = eval(self.expression.replace("data", "self.data"))
+
+    def handle_nan(self):
+        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
+
+    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
+        self.call()
+        if normalize:
+            self.normalize()
+        if handle_nan:
+            self.handle_nan()
+        return self.result
+
+
 def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd.DataFrame:
     """
     复现qlib的alpha 360.
@@ -1220,10 +1311,12 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     for c in delta.columns:
         delta[c] /= price
 
-    r2 = REGRESSION(data["open"], data["close"], windows, rettype=4).get_factor_value(normalize=normalize, handle_nan=fill)
+    r2 = REGRESSION(data["open"], data["close"], windows, rettype=4).get_factor_value(normalize=normalize,
+                                                                                      handle_nan=fill)
     r2.columns = ["rsqr" + str(w) for w in windows]
 
-    resi = REGRESSION(data["open"], data["close"], windows, rettype=0).get_factor_value(normalize=normalize, handle_nan=fill)
+    resi = REGRESSION(data["open"], data["close"], windows, rettype=0).get_factor_value(normalize=normalize,
+                                                                                        handle_nan=fill)
     resi.columns = ["resi" + str(w) for w in windows]
     for c in resi.columns:
         resi[c] /= price
