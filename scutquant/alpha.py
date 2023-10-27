@@ -30,8 +30,7 @@ def market_neutralize(x: pd.Series, long_only: bool = False) -> pd.Series:
 
 def calc_factor_turnover(x: pd.Series) -> pd.Series:
     factor_neu = market_neutralize(x, long_only=False)
-    instrument_to = abs(factor_neu.groupby(level=1).diff())
-    instrument_to.dropna(inplace=True)
+    instrument_to = abs(factor_neu - ts_delay(factor_neu, 1).fillna(0))
     return instrument_to.groupby(level=0).sum()
 
 
@@ -97,7 +96,7 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
     if "ir" in metrics:  # information ratio
         result["ir"] = result["excess_return"].mean() / result["return"].std()
     if "fitness" in metrics:
-        result["fitness"] = calc_fitness(result["sharpe"], result["return"].values[-1] - 1, result["turnover"].mean())
+        result["fitness"] = calc_fitness(result["sharpe"], result["return"].mean() - 1, result["turnover"].mean())
     return result
 
 
@@ -1075,10 +1074,10 @@ class WQ_1(Alpha):
         volume_rank = cs_rank(self.data["volume"])
         rank_ratio = volume_rank / c_rank
         if isinstance(self.periods, int):
-            self.result = ts_decay_linear(-ts_rank(self.data["close"], self.periods) * rank_ratio, 15)
+            self.result = ts_decay(-ts_rank(self.data["close"], self.periods) * rank_ratio, 15)
         else:
             for d in self.periods:
-                self.result["wq1_" + str(d)] = ts_decay_linear(-ts_rank(self.data["close"], d) * rank_ratio, 15)
+                self.result["wq1_" + str(d)] = ts_decay(-ts_rank(self.data["close"], d) * rank_ratio, 15)
 
     def normalize(self):
         if self.norm_method == "zscore":
@@ -1115,7 +1114,7 @@ class WQ_2(Alpha):
 
     def call(self):
         self.data["returns"] = ts_returns(self.data["close"], 1)
-        self.data["cs_mean"] = cs_mean(self.data["returns"]) * ts_decay_linear(self.data["close"], 15)
+        self.data["cs_mean"] = cs_mean(self.data["returns"]) * ts_decay(self.data["close"], 15)
         if isinstance(self.periods, int):
             self.result = cs_rank(ts_corr(self.data["returns"], self.data["cs_mean"], self.periods))
         else:

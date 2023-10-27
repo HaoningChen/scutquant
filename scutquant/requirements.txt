@@ -1,4 +1,4 @@
-akshare>=1.9.59
+tushare>=1.2.8
 pandas>=1.5.3
 joblib>=1.2.0
 scipy>=1.10.0

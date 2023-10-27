@@ -370,29 +370,20 @@ def ts_neg_count(data: pd.Series, n_period: int) -> pd.Series:
     return data_copy.groupby(level=1).transform(lambda x: x.rolling(n_period).sum())
 
 
-def linear_decay(x: pd.Series, window: int) -> pd.Series:
-    """
-    Applies linear decay to a time series.
-
-    :param x: The time series to apply linear decay to.
-    :type x: pd.Series
-    :param window: The window size for the linear decay.
-    :type window: int
-    :return: The time series with linear decay applied.
-    :rtype: pd.Series
-    """
-    weights = [np.exp(-1 / window * (window - t)) for t in range(window)]
-    return x.rolling(window).apply(lambda y: sum(y * weights) / sum(weights), raw=True)
+def decay_n(x: pd.Series, n: int) -> pd.Series:
+    arr = np.arange(1, n+1)
+    weights = arr / sum(arr)
+    return x.rolling(n).apply(lambda y: np.dot(y, weights), raw=True)
 
 
-def ts_decay_linear(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: int) -> pd.Series:
+def ts_decay(data: pd.Series | pd.core.groupby.SeriesGroupBy, n_period: int) -> pd.Series:
     """
     Returns the linear decay on data for the past n_period days.
     """
     if isinstance(data, pd.Series):
-        return data.groupby(level=1).transform(lambda x: linear_decay(x, n_period))
+        return data.groupby(level=1).transform(lambda x: decay_n(x, n_period))
     else:
-        res: pd.Series = data.transform(lambda x: linear_decay(x, n_period))
+        res: pd.Series = data.transform(lambda x: decay_n(x, n_period))
         res.index.names = ["datetime", "instrument"]
         return res
 
@@ -599,9 +590,6 @@ def inf_mask(data: pd.Series) -> pd.Series:
 
 
 def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
-    """
-    经过百万级的数据的上千次实验, 发现此方法比调用sklearn.linear_model的LinearRegression平均快一倍
-    """
     cov = x.cov(y)
     var = x.var()
     beta = cov / var
