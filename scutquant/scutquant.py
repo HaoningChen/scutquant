@@ -122,7 +122,7 @@ def robustzscorenorm(X: pd.DataFrame | pd.Series, median=None, clip=3) -> pd.Dat
     if median is None:
         median = X.median()
     X -= median
-    mad = abs(median) * 1.4826
+    mad = abs(X).median() * 1.4826
     X /= mad
     if clip is not None:
         X.clip(-clip, clip, inplace=True)
