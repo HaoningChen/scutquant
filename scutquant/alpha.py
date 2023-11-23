@@ -92,9 +92,9 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
     if "turnover" in metrics:
         result["turnover"] = calc_factor_turnover(factor)
     if "sharpe" in metrics:
-        result["sharpe"] = result["return"].mean() / result["return"].std()
+        result["sharpe"] = (result["return"].mean() - 1) / result["return"].std()
     if "ir" in metrics:  # information ratio
-        result["ir"] = result["excess_return"].mean() / result["return"].std()
+        result["ir"] = (result["excess_return"].mean() - 1) / result["return"].std()
     if "fitness" in metrics:
         result["fitness"] = calc_fitness(result["sharpe"], result["return"].mean() - 1, result["turnover"].mean())
     return result

@@ -543,6 +543,10 @@ def cs_shrink(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) ->
         return res
 
 
+def demean(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
+    return data - cs_mean(data)
+
+
 def mean(data1: pd.Series, data2: pd.Series) -> pd.Series:
     return (data1 + data2) / 2
 
@@ -579,6 +583,14 @@ def smaller(data1: pd.Series, data2: pd.Series) -> pd.Series:
     Returns the smaller value of data1 and data2
     """
     return data1.where(data1 > data2, data1)
+
+
+def mad_winsor(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
+    med = data.groupby(level=0).median()
+    mad = abs((data - med)).groupby(level=0).median()
+    up = med + 3 * mad * 1.4826
+    down = med - 3 * mad * 1.4826
+    return data.clip(upper=up, lower=down)
 
 
 def inf_mask(data: pd.Series) -> pd.Series:
