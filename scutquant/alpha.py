@@ -59,12 +59,14 @@ def calc_fitness(sharpe: float, returns: float, turnover: float) -> float:
     return sharpe * ((abs(returns) / max(turnover, 0.125)) ** 0.5)
 
 
-def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle_nan: bool = True) -> dict:
+def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle_nan: bool = True,
+                       long_only: bool = False) -> dict:
     """
     :param factor:
     :param label:
     :param metrics: list[str] = ["ic", "return", "turnover", "sharpe", "ir", "fitness"] 有些指标的计算必须依赖其它指标
     :param handle_nan:
+    :param long_only: 是否只做多
     :return:
     """
     if metrics is None:
@@ -80,8 +82,9 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
         result["icir"] = result["ic"].mean() / result["ic"].std()
         result["t-stat"] = result["icir"] * (len(result["ic"]) ** 0.5)
     if "return" in metrics:
-        result["return"] = get_factor_portfolio(factor, label)
+        result["return"] = get_factor_portfolio(factor, label, long_only=long_only)
         benchmark: pd.Series = label.groupby(level=0).mean()
+        benchmark.index = pd.to_datetime(benchmark.index)
         benchmark = benchmark[benchmark.index.isin(result["return"].index)]
         result["benchmark"] = (benchmark + 1).cumprod()
         result["excess_return"] = result["return"] - result["benchmark"]
@@ -94,9 +97,11 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
     if "sharpe" in metrics:
         result["sharpe"] = (result["return"].mean() - 1) / result["return"].std()
     if "ir" in metrics:  # information ratio
-        result["ir"] = (result["excess_return"].mean() - 1) / result["return"].std()
+        result["ir"] = result["excess_return"].mean() / result["return"].std()
     if "fitness" in metrics:
-        result["fitness"] = calc_fitness(result["sharpe"], result["return"].mean() - 1, result["turnover"].mean())
+        result["fitness"] = calc_fitness(result["sharpe"], result["return"].mean(), result["turnover"].mean())
+    result["return"] -= 1
+    result["benchmark"] -= 1
     return result
 
 
