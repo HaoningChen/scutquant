@@ -97,7 +97,7 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
     if "sharpe" in metrics:
         result["sharpe"] = (result["return"].mean() - 1) / result["return"].std()
     if "ir" in metrics:  # information ratio
-        result["ir"] = result["excess_return"].mean() / result["return"].std()
+        result["ir"] = result["excess_return"].mean() / result["excess_return"].std()
     if "fitness" in metrics:
         result["fitness"] = calc_fitness(result["sharpe"], result["return"].mean(), result["turnover"].mean())
     result["return"] -= 1
@@ -157,27 +157,6 @@ class MA(Alpha):
             for d in self.periods:
                 self.result["ma" + str(d)] = ts_mean(self.data, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class STD(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
@@ -195,27 +174,6 @@ class STD(Alpha):
         else:
             for d in self.periods:
                 self.result["std" + str(d)] = ts_std(self.data, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class KURT(Alpha):
@@ -235,27 +193,6 @@ class KURT(Alpha):
             for d in self.periods:
                 self.result["kurt" + str(d)] = ts_kurt(self.data, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class SKEW(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
@@ -273,27 +210,6 @@ class SKEW(Alpha):
         else:
             for d in self.periods:
                 self.result["skew" + str(d)] = ts_skew(self.data, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class DELAY(Alpha):
@@ -313,27 +229,6 @@ class DELAY(Alpha):
             for d in self.periods:
                 self.result["delay" + str(d)] = ts_delay(self.data, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class DELTA(Alpha):
     def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
@@ -351,27 +246,6 @@ class DELTA(Alpha):
         else:
             for d in self.periods:
                 self.result["delta" + str(d)] = ts_delta(self.data, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class MAX(Alpha):
@@ -391,27 +265,6 @@ class MAX(Alpha):
             for d in self.periods:
                 self.result["max" + str(d)] = ts_max(self.data, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class MIN(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
@@ -429,27 +282,6 @@ class MIN(Alpha):
         else:
             for d in self.periods:
                 self.result["min" + str(d)] = ts_min(self.data, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class RANK(Alpha):
@@ -469,27 +301,6 @@ class RANK(Alpha):
             for d in self.periods:
                 self.result["rank" + str(d)] = ts_rank(self.data, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class QTLU(Alpha):
     def __init__(self, data: pd.Series | pd.core.groupby.SeriesGroupBy, periods: list[int] | int,
@@ -507,27 +318,6 @@ class QTLU(Alpha):
         else:
             for d in self.periods:
                 self.result["qtlu" + str(d)] = ts_quantile_up(self.data, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class QTLD(Alpha):
@@ -547,27 +337,6 @@ class QTLD(Alpha):
             for d in self.periods:
                 self.result["qtld" + str(d)] = ts_quantile_down(self.data, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class CORR(Alpha):
     def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
@@ -586,27 +355,6 @@ class CORR(Alpha):
         else:
             for d in self.periods:
                 self.result["corr" + str(d)] = ts_corr(self.feature, self.label, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class CORD(Alpha):
@@ -630,27 +378,6 @@ class CORD(Alpha):
             for d in self.periods:
                 self.result["cord" + str(d)] = ts_corr(fd, ld, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class COV(Alpha):
     def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
@@ -670,27 +397,6 @@ class COV(Alpha):
             for d in self.periods:
                 self.result["cov" + str(d)] = ts_cov(self.feature, self.label, d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class BETA(Alpha):
     def __init__(self, feature: pd.Series, label: pd.Series, periods: list[int] | int,
@@ -709,27 +415,6 @@ class BETA(Alpha):
         else:
             for d in self.periods:
                 self.result["beta" + str(d)] = ts_beta(self.feature, self.label, d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class REGRESSION(Alpha):
@@ -751,27 +436,6 @@ class REGRESSION(Alpha):
             for d in self.periods:
                 self.result["reg" + str(d)] = ts_regression(self.feature, self.label, d, self.rettype)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class PSY(Alpha):
     def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
@@ -790,27 +454,6 @@ class PSY(Alpha):
         else:
             for d in self.periods:
                 self.result["psy" + str(d)] = ts_pos_count(diff, d) / d * 100
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class KBAR(Alpha):
@@ -835,27 +478,6 @@ class KBAR(Alpha):
         self.result["ksft2"] = (2 * self.data["close"] - self.data["high"] - self.data["low"]) / (
                 self.data["high"] - self.data["low"])
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class RSV(Alpha):
     def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
@@ -877,27 +499,6 @@ class RSV(Alpha):
                 self.result["rsv" + str(d)] = (self.data["close"] - lowest_d) / (
                         ts_max(self.data["high"], d) - lowest_d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class CNTP(Alpha):
     # The percentage of days in past d days that price go up.
@@ -917,27 +518,6 @@ class CNTP(Alpha):
         else:
             for d in self.periods:
                 self.result["cntp" + str(d)] = ts_pos_count(diff, d) / d
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class CNTN(Alpha):
@@ -959,27 +539,6 @@ class CNTN(Alpha):
             for d in self.periods:
                 self.result["cntn" + str(d)] = ts_neg_count(diff, d) / d
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class SUMP(Alpha):
     def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
@@ -1000,27 +559,6 @@ class SUMP(Alpha):
             for d in self.periods:
                 self.result["sump" + str(d)] = ts_sum(bigger(diff, zeros), d) / ts_sum(abs(diff), d)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class SUMN(Alpha):
     def __init__(self, data: pd.Series, periods: list[int] | int, normalize: str = "zscore",
@@ -1040,27 +578,6 @@ class SUMN(Alpha):
         else:
             for d in self.periods:
                 self.result["sumn" + str(d)] = ts_sum(bigger(-diff, zeros), d) / ts_sum(abs(diff), d)
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class WQ_1(Alpha):
@@ -1084,27 +601,6 @@ class WQ_1(Alpha):
             for d in self.periods:
                 self.result["wq1_" + str(d)] = ts_decay(-ts_rank(self.data["close"], d) * rank_ratio, 15)
 
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
-
 
 class WQ_2(Alpha):
     # cs_rank(ts_corr(returns, cs_mean(returns) * ts_decay_linear(close, 15), days))
@@ -1125,27 +621,6 @@ class WQ_2(Alpha):
         else:
             for d in self.periods:
                 self.result["wq2_" + str(d)] = cs_rank(ts_corr(self.data["returns"], self.data["cs_mean"], d))
-
-    def normalize(self):
-        if self.norm_method == "zscore":
-            self.result = cs_zscore(self.result)
-        elif self.norm_method == "robust_zscore":
-            self.result = cs_robust_zscore(self.result)
-        elif self.norm_method == "scale":
-            self.result = cs_scale(self.result)
-        else:
-            self.result = cs_rank(self.result)
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 class CustomizedAlpha(Alpha):
@@ -1170,17 +645,6 @@ class CustomizedAlpha(Alpha):
             self.result: pd.DataFrame = pd.concat(factors, axis=1)
         else:
             self.result: pd.Series = eval(self.expression.replace("data", "self.data"))
-
-    def handle_nan(self):
-        self.result = self.result.groupby(level=1).transform(lambda x: x.fillna(method=self.process_nan).fillna(0))
-
-    def get_factor_value(self, normalize=False, handle_nan=False) -> pd.Series | pd.DataFrame:
-        self.call()
-        if normalize:
-            self.normalize()
-        if handle_nan:
-            self.handle_nan()
-        return self.result
 
 
 def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd.DataFrame:
