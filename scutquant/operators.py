@@ -530,6 +530,15 @@ def cs_beta(x1: pd.Series, x2: pd.Series) -> pd.Series:
     var = cs_variance(x1)
     return cov / var
 
+def cs_alpha(x1: pd.Series, x2: pd.Series) -> pd.Series:
+    beta = cs_beta(x1, x2)
+    return cs_mean(x2) - cs_mean(x1) * beta
+
+def cs_resid(x1: pd.Series, x2: pd.Series) -> pd.Series:
+    beta = cs_beta(x1, x2)
+    alpha = cs_mean(x2) - cs_mean(x1) * beta
+    return x2 - x1 * beta - alpha
+
 
 def cs_shrink(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
@@ -601,15 +610,6 @@ def inf_mask(data: pd.Series) -> pd.Series:
     return data.where(data != -np.inf, np.nan)
 
 
-def get_resid(x: pd.Series, y: pd.Series) -> pd.Series:
-    cov = x.cov(y)
-    var = x.var()
-    beta = cov / var
-    del cov, var
-    beta0 = y.mean() - beta * x.mean()
-    return y - beta0 - beta * x
-
-
 def neutralize(data: pd.DataFrame | pd.Series, target: pd.Series, features: list[str] = None,
                n_jobs=-1) -> pd.DataFrame | pd.Series:
     """
@@ -627,31 +627,12 @@ def neutralize(data: pd.DataFrame | pd.Series, target: pd.Series, features: list
     :param n_jobs: 同时调用的cpu数
     :return: pd.DataFrame, 包括中性化后的因子和未中性化的其它因子
     """
-    RETTYPE = "df"
-
-    def neutralize_single_factor(f_name: str) -> pd.Series:
-        result = concat_data[[f_name, target_name]].groupby(level=0, group_keys=False).apply(
-            lambda x: get_resid(x[target_name], x[f_name]))
-        result.name = f_name
-        return result
-
     if isinstance(data, pd.Series):
-        data = data.to_frame(name=data.name)
-        RETTYPE = "series"
-
-    target = target[target.index.isin(data.index)]
-    target.name = "label"
-    concat_data = pd.concat([data, target], axis=1)
-    target_name = target.name
-    features = data.columns if features is None else features
-    other_cols = [c for c in data.columns if c not in features]
-    del data, target
-
-    factor_neu = Parallel(n_jobs=n_jobs)(delayed(neutralize_single_factor)(f) for f in features)
-    data_neu = pd.concat(factor_neu, axis=1)
-    del factor_neu
-
-    if RETTYPE == "df":
-        return pd.concat([data_neu, concat_data[other_cols]], axis=1)
+        return cs_resid(data, target)
     else:
-        return data_neu.iloc[:, 0]
+        features = data.columns if features is None else features
+        other_cols = [c for c in data.columns if c not in features]
+        factor_neu = Parallel(n_jobs=n_jobs)(delayed(cs_resid)(data[f], target) for f in features)
+        data_neu = pd.concat(factor_neu, axis=1)
+        data_neu.columns = features
+        return pd.concat([data_neu, data[other_cols]], axis=1)
