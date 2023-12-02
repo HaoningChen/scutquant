@@ -371,7 +371,7 @@ def ts_neg_count(data: pd.Series, n_period: int) -> pd.Series:
 
 
 def decay_n(x: pd.Series, n: int) -> pd.Series:
-    arr = np.arange(1, n+1)
+    arr = np.arange(1, n + 1)
     weights = arr / sum(arr)
     return x.rolling(n).apply(lambda y: np.dot(y, weights), raw=True)
 
@@ -530,9 +530,11 @@ def cs_beta(x1: pd.Series, x2: pd.Series) -> pd.Series:
     var = cs_variance(x1)
     return cov / var
 
+
 def cs_alpha(x1: pd.Series, x2: pd.Series) -> pd.Series:
     beta = cs_beta(x1, x2)
     return cs_mean(x2) - cs_mean(x1) * beta
+
 
 def cs_resid(x1: pd.Series, x2: pd.Series) -> pd.Series:
     beta = cs_beta(x1, x2)
@@ -628,11 +630,11 @@ def neutralize(data: pd.DataFrame | pd.Series, target: pd.Series, features: list
     :return: pd.DataFrame, 包括中性化后的因子和未中性化的其它因子
     """
     if isinstance(data, pd.Series):
-        return cs_resid(data, target)
+        return cs_resid(target, data)
     else:
         features = data.columns if features is None else features
         other_cols = [c for c in data.columns if c not in features]
-        factor_neu = Parallel(n_jobs=n_jobs)(delayed(cs_resid)(data[f], target) for f in features)
+        factor_neu = Parallel(n_jobs=n_jobs)(delayed(cs_resid)(target, data[f]) for f in features)
         data_neu = pd.concat(factor_neu, axis=1)
         data_neu.columns = features
         return pd.concat([data_neu, data[other_cols]], axis=1)
