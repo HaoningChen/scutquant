@@ -41,7 +41,8 @@ def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime',
     return result.set_index(index)
 
 
-def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, datetime: str = "datetime", raw: bool=False) -> pd.DataFrame:
+def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, datetime: str = "datetime",
+            raw: bool = False) -> pd.DataFrame:
     """
     通过给定df1的lookupkey, 在df2中查找符合条件的值并合并到df1中. 可用于处理另类数据、基本面数据与量价数据的合并
 
@@ -619,23 +620,19 @@ def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", 
 ####################################################
 # 自动建模（线性回归模型）
 ####################################################
-def auto_lrg(x: pd.DataFrame, y: pd.Series | pd.DataFrame, method: str = "ols", fit_params: bool = False, alphas=None,
-             logspace_params=None, cv: float = 10, max_iter: int = 1000, verbose: int = 1):
+def auto_lrg(x: pd.DataFrame | pd.Series, y: pd.Series | pd.DataFrame, method: str = "ols", alpha: float = 1e-3,
+             max_iter: int = 1000, verbose: int = 1):
     """
     :param x: pd.DataFrame, 特征值
     :param y: pd.Series or pd.DataFrame, 目标值
     :param method: str, 回归方法, 可选'ols', 'lasso', 'ridge'或'logistic'
-    :param fit_params: bool, 是否自动调参
-    :param alphas: np.ndarray or others, 回归的超参数
-    :param logspace_params: list[min, max, n_sample], 超参数搜索空间和采样的样本量
-    :param cv: 参考sklearn的文档 'Determines the cross-validation splitting strategy.'
+    :param alpha: 正则化系数
     :param max_iter: int, 最大迭代次数
     :param verbose: int, 等于1时输出使用的线性回归方法
     :return: model
     """
-    if alphas is None:
-        if logspace_params is None:
-            logspace_params = [-5, 2, 200]
+    if isinstance(x, pd.Series):
+        x = x.values.reshape(-1, 1)
     model = None
     if verbose == 1:
         print(method + ' method will be used')
@@ -643,22 +640,10 @@ def auto_lrg(x: pd.DataFrame, y: pd.Series | pd.DataFrame, method: str = "ols", 
         lrg = linear_model.LinearRegression()
         model = lrg.fit(x, y)
     elif method == 'ridge':
-        if fit_params:
-            alphas = np.logspace(logspace_params[0], logspace_params[1], logspace_params[2])
-            ridge_cv = linear_model.RidgeCV(alphas=alphas, scoring='neg_mean_squared_error', cv=cv)
-            ridge_cv.fit(x, y)
-            ridge = linear_model.Ridge(alpha=ridge_cv.alpha_, max_iter=max_iter)
-        else:
-            ridge = linear_model.Ridge()
+        ridge = linear_model.Ridge(alpha=alpha, max_iter=max_iter)
         model = ridge.fit(x, y)
     elif method == 'lasso':
-        if fit_params:
-            alphas = np.logspace(logspace_params[0], logspace_params[1], logspace_params[2])
-            lasso_cv = linear_model.LassoCV(alphas=alphas, cv=cv)
-            lasso_cv.fit(x, y)
-            lasso = linear_model.Lasso(alpha=lasso_cv.alpha_, max_iter=max_iter)
-        else:
-            lasso = linear_model.Lasso()
+        lasso = linear_model.Lasso(alpha=alpha, max_iter=max_iter)
         model = lasso.fit(x, y)
     elif method == 'logistic':
         log = linear_model.LogisticRegression()
@@ -667,15 +652,12 @@ def auto_lrg(x: pd.DataFrame, y: pd.Series | pd.DataFrame, method: str = "ols", 
 
 
 class hybrid:
-    def __init__(self, lin_model=None, xgb_model=None, task: str = "reg", lrg_method: str = "ols", alphas=None,
-                 logspace_params=None, cv: float = 10, max_iter: int = 1000, xgb_params: dict = None,
-                 weight: list = None):
+    def __init__(self, lin_model=None, xgb_model=None, task: str = "reg", lrg_method: str = "ols", alpha: float = 1e-3,
+                 max_iter: int = 1000, xgb_params: dict = None, weight: list = None):
         super(hybrid, self).__init__()
         self.task = task
         self.lrg_method = lrg_method
-        self.alphas = alphas
-        self.logspace_params = logspace_params
-        self.cv = cv
+        self.alpha = alpha
         self.max_iter = max_iter
         self.xgb_params = xgb_params
         self.weight = weight
@@ -714,8 +696,7 @@ class hybrid:
                                         reg_alpha=l1, reg_lambda=l2, max_depth=max_depth,
                                         early_stopping_rounds=early_stopping_rounds)
             self.xgb_model = xgb.fit(x_train, y_train, eval_set=[(x_valid, y_valid)])
-        self.lin_model = auto_lrg(x_train, y_train, method=self.lrg_method, alphas=self.alphas,
-                                  logspace_params=self.logspace_params, cv=self.cv, max_iter=self.max_iter)
+        self.lin_model = auto_lrg(x_train, y_train, method=self.lrg_method, alpha=self.alpha, max_iter=self.max_iter)
 
     def predict(self, x_test: pd.DataFrame) -> list:
         if self.weight is None:

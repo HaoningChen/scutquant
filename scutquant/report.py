@@ -270,10 +270,10 @@ def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int =
         data.append(t_df[c].cumsum())
         label.append(c)
         win_rate.append(len(t_df[t_df[c] >= 0]) / len(t_df))
-        mean_ret.append(t_df[c].cumsum().values[-1] / len(t_df))
+        mean_ret.append(t_df[c].cumsum().values[-1] / len(t_df) * 100)
     plot(data, label, title='Grouped Return', xlabel='time_id', ylabel='value', figsize=figsize)
     plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar", figsize=figsize)
-    plot(mean_ret, label=cols, title="Mean Return of Each Group", mode="bar", figsize=figsize)
+    plot(mean_ret, label=cols, title="Mean Return of Each Group(%)", mode="bar", figsize=figsize)
 
 
 def calc_features(feature: pd.Series):
