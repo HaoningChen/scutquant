@@ -4,9 +4,7 @@
 ## 各模块介绍(按照量化研究的流程介绍)  
 
 ### [data](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/data.py):   
-获取数据模块, 基于akshare实现. 目前功能只有获取指数成分股数据  
-### [get_news_data](https://github.com/HaoningChen/scutquant/blob/main/scutquant/get_news_data.py):  
-获取中国的报纸新闻数据, 可用于情感分析或者研究气候不确定性等问题, 并构建另类因子  
+获取数据模块, 基于akshare实现. 目前功能只有获取指数成分股数据   
 ### [operators](https://github.com/HaoningChen/scutquant/blob/main/scutquant/operators.py):  
 为[alpha](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py)模块提供底层计算, 也可单独拿出来构建自定义因子. 该模块旨在方便用户以接近自然语言的方式构造因子  
 ### [alpha](https://github.com/HaoningChen/ScutQuant/blob/main/scutquant/alpha.py): 
