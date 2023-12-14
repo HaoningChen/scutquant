@@ -22,13 +22,6 @@ PS：协会公众号二维码如下
 
 联系方式(目前): harley_chen@foxmail.com
 
-## Quant With YAML:  
-当你已经对量化投资有所了解, 又不愿意花费时间学习新的框架时, 可以在配置好[all_kwargs.yaml](https://github.com/HaoningChen/scutquant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/all_kwargs.yaml)和data文件后, 使用[pipeline](https://github.com/HaoningChen/scutquant/blob/main/%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B/quant_with_yaml.ipynb)轻松进行量化研究. 源代码请参考[scutquant.Pipeline](https://github.com/HaoningChen/scutquant/blob/main/scutquant/Pipeline.py)
-
-另外, 如果仅需研究因子IC, 可以在配置好[factors_ana.yaml](https://github.com/HaoningChen/scutquant/blob/main/%E6%8A%80%E6%9C%AF%E5%9B%A0%E5%AD%90%E6%B5%8B%E8%AF%95/factors_ana.yaml)和data文件后, 使用[all_factors_ana](https://github.com/HaoningChen/scutquant/blob/main/%E6%8A%80%E6%9C%AF%E5%9B%A0%E5%AD%90%E6%B5%8B%E8%AF%95/factors_ana.ipynb)获取所有因子的IC, 以及查看在测试集上的所有因子IC加权均值和分层效应. 
-
-可以根据给出的yaml示例, 修改参数以适应不同的数据集和任务需求
-
 ## 环境要求  
 (最好有) Anaconda3   
 python3.8 及以上（如果不使用data模块，那么3.7及以上即可）    
