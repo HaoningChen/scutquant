@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 import datetime
 from seaborn import kdeplot
 import matplotlib.pyplot as plt
@@ -9,6 +7,8 @@ from sklearn import linear_model
 import pickle
 import random
 import warnings
+from .report import single_factor_ana
+from .operators import *
 
 warnings.filterwarnings("ignore")
 random.seed(2046)
@@ -38,7 +38,7 @@ def join_data(data: pd.DataFrame, data_join: pd.DataFrame, on: str = 'datetime',
     return result.set_index(index)
 
 
-def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, datetime: str = "datetime",
+def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, date: str = "datetime",
             raw: bool = False) -> pd.DataFrame:
     """
     通过给定df1的lookupkey, 在df2中查找符合条件的值并合并到df1中. 可用于处理另类数据、基本面数据与量价数据的合并
@@ -65,11 +65,11 @@ def vlookup(df1: pd.DataFrame, df2: pd.DataFrame, lookup_key: str, datetime: str
     df2.reset_index(inplace=True)
     original_keys = df1[lookup_key].copy()
     df1[lookup_key] = df1[lookup_key].apply(match)
-    merged = pd.merge(df1, df2, on=[datetime, lookup_key], how="outer")
+    merged = pd.merge(df1, df2, on=[date, lookup_key], how="outer")
     if raw:
         merged["key"] = df1[lookup_key]
         merged[lookup_key] = original_keys
-        merge = merged.set_index([datetime, lookup_key, "key"]).sort_index()
+        merge = merged.set_index([date, lookup_key, "key"]).sort_index()
         merge = merge[~merge.index.get_level_values(1).isnull()]
         return merge[~merge.index.get_level_values(2).isnull()]
     else:
@@ -102,51 +102,6 @@ def price2ret(price: pd.DataFrame | pd.Series, shift1: int = -1, shift2: int = -
     if fill:
         ret.fillna(0, inplace=True)
     return ret
-
-
-def zscorenorm(X: pd.DataFrame | pd.Series, mean=None, std=None, clip=3) -> pd.DataFrame | pd.Series:
-    if mean is None:
-        mean = X.mean()
-    if std is None:
-        std = X.std()
-    X -= mean
-    X /= std
-    if clip is not None:
-        X.clip(-clip, clip, inplace=True)
-    return X
-
-
-def robustzscorenorm(X: pd.DataFrame | pd.Series, median=None, clip=3) -> pd.DataFrame | pd.Series:
-    if median is None:
-        median = X.median()
-    X -= median
-    mad = abs(X).median() * 1.4826
-    X /= mad
-    if clip is not None:
-        X.clip(-clip, clip, inplace=True)
-    return X
-
-
-def minmaxnorm(X: pd.DataFrame | pd.Series, Min=None, Max=None, clip=3) -> pd.DataFrame | pd.Series:
-    if Min is None:
-        Min = X.min()
-    if Max is None:
-        Max = X.max()
-    X -= Min
-    X /= Max - Min
-    if clip is not None:
-        X.clip(-clip, clip, inplace=True)
-    return X
-
-
-def ranknorm(X: pd.DataFrame | pd.Series, groupby: str = None) -> pd.DataFrame | pd.Series:
-    if groupby is None:
-        X_rank = X.rank(pct=True)
-    else:
-        X_rank = X.groupby(groupby).rank(pct=True)
-    X_rank -= 0.5
-    X_rank *= 3.46
-    return X_rank
 
 
 def make_pca(X: pd.DataFrame | pd.Series) -> dict:
@@ -273,8 +228,6 @@ def align(x: pd.Series | pd.DataFrame, y: pd.Series | pd.DataFrame) \
     :param y: pd.DataFrame or pd.Series
     :return: pd.DataFrame(or pd.Series), pd.DataFrame(or pd.Series)
     """
-    # print(x.index.names)
-    # print(y.index.names)
     if len(x) > len(y):
         x = x[x.index.isin(y.index)]
     elif len(y) > len(x):
@@ -287,17 +240,10 @@ def percentage_missing(X: pd.Series | pd.DataFrame) -> float:
     return percent_missing
 
 
-def process_inf(X: pd.DataFrame) -> pd.DataFrame:
-    for col in X.columns:
-        X[col] = X[col].replace([np.inf, -np.inf], X[col][~np.isinf(X[col])].mean())
-    return X
-
-
 def clean(X: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
     X.dropna(axis=1, how='all', inplace=True)
     X.fillna(method='ffill', inplace=True)
     X.dropna(axis=0, inplace=True)
-    # X = process_inf(X)
     return X
 
 
@@ -421,7 +367,7 @@ def group_split(X: pd.DataFrame | pd.Series, params: dict = None) -> \
 def split_data_by_date(data: pd.DataFrame | pd.Series, kwargs: dict) -> \
         tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
-    按照日期拆出(整段)的测试集, 然后剩下的数据按照参数"split_method"和"split_kwargs"拆除训练集和验证机
+    按照日期拆出(整段)的测试集, 然后剩下的数据按照参数"split_method"和"split_kwargs"拆除训练集和验证集
     :param data: pd.DataFrame
     :param kwargs: dict, test_start_date必填, 其它选填. 当没指定test_end_date时, 默认截取到最后一天
     :return: pd.DataFrame
@@ -460,21 +406,40 @@ def split_data_by_date(data: pd.DataFrame | pd.Series, kwargs: dict) -> \
 ####################################################
 # 自动处理器
 ####################################################
-def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", label_norm: bool = True,
-                 select: bool = False, orth: bool = False, clip=3, split_params: dict = None) -> dict:
+def process_data(data: pd.DataFrame | pd.Series, norm: str = "z", decay: bool = False) -> pd.DataFrame | pd.Series:
+    """
+    inf_mask -> process_nan -> mad_winsorize -> (decay) -> normalize
+    """
+    if isinstance(data, pd.Series):
+        print("original data:")
+        single_factor_ana(data)
+    data = mad_winsor(ts_ffill(inf_mask(data)).dropna())
+    if decay:
+        data = ts_decay(data, 5).dropna()
+    if norm == "z":
+        data = cs_zscore(data)
+    elif norm == "r":
+        data = cs_robust_zscore(data)
+    elif norm == "m":
+        data = cs_scale(data)
+    else:
+        data = cs_rank(data)
+    if isinstance(data, pd.Series):
+        print("data processed:")
+        single_factor_ana(data)
+    return data
+
+
+def auto_process(X: pd.DataFrame, y: str, norm: str = "z", split_params: dict = None,
+                 label_decay: bool = False) -> dict:
     """
     :param X: pd.DataFrame，原始特征，包括了目标值
     :param y: str，目标值所在列的列名
-    :param groupby: str, 如果是面板数据则输入groupby的依据，序列数据则直接填None
     :param norm: str, 标准化方式, 可选'z'/'r'/'m'
-    :param label_norm: bool, 是否对目标值进行标准化
-    :param select: bool, 是否去除无用特征
-    :param orth: 是否正交化
-    :param clip: 是否截断特征, None为不截断, 否则按照(-clip, clip)截断
     :param split_params: dict, 划分数据集的方法
-    :return: dict{X_train, X_test, y_train, y_test, ymean, ystd}
+    :param label_decay: 是否对目标值做decay以提高unique value的占比
+    :return: dict{X_train, X_test, y_train, y_test}
     """
-    date = X.index.names[0]
     if split_params is None:
         split_params = {
             "data": X,
@@ -489,16 +454,15 @@ def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", 
     print(X.info())
     X_mis = percentage_missing(X)
     print('X_mis=', X_mis)
-    if groupby is None:
-        X = clean(X)
-    else:
-        X.dropna(axis=1, how='all', inplace=True)
-        X = X.groupby([groupby]).fillna(method='ffill').dropna()
-    print('clean dataset done', '\n')
+
+    label = X.pop(y)
+    feature = process_data(X, norm=norm)
+    label = process_data(label, norm=norm, decay=label_decay)
+    print("process dataset done")
 
     # 拆分数据集
-    X_train, X_valid, X_test = split_data_by_date(X, split_params)
-    y_train, y_valid, y_test = X_train.pop(y), X_valid.pop(y), X_test.pop(y)
+    X_train, X_valid, X_test = split_data_by_date(feature, split_params)
+    y_train, y_valid, y_test = split_data_by_date(label, split_params)
 
     X_train, y_train = align(X_train, y_train)
     X_valid, y_valid = align(X_valid, y_valid)
@@ -513,87 +477,6 @@ def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", 
         X_train = down_sample(X_train, col=y)
         print('down sample done', '\n')
 
-    # 目标值标准化
-    if label_norm:
-        if groupby is None:
-            ymean, ystd = y_train.mean(), y_train.std()
-            y_train, y_valid = zscorenorm(y_train, ymean, ystd), zscorenorm(y_valid, ymean, ystd)
-        else:
-            ymean, ystd = y_test.groupby(date).mean(), y_test.groupby(date).std()  # 是否应该使用滞后项
-            y_train = zscorenorm(y_train, y_train.groupby(date).mean(), y_train.groupby(date).std())
-            y_valid = zscorenorm(y_valid, y_valid.groupby(date).mean(), y_valid.groupby(date).std())
-        print('label norm done', '\n')
-    else:
-        ymean, ystd = None, None
-    print("The distribution of y_train:")
-    show_dist(y_train)
-    print("The distribution of y_valid:")
-    show_dist(y_valid)
-    print("The distribution of y_test:")
-    show_dist(y_test)
-
-    # 特征值标准化
-    if groupby is None:
-        if norm == 'z':
-            mean, std = X_train.mean(), X_train.std()
-            X_train = zscorenorm(X_train)
-            X_valid, X_test = zscorenorm(X_valid, mean, std, clip), zscorenorm(X_test, mean, std, clip)
-        elif norm == 'r':
-            median = X_train.median()
-            X_train = robustzscorenorm(X_train)
-            X_valid, X_test = robustzscorenorm(X_valid, median, clip), robustzscorenorm(X_test, median, clip)
-        elif norm == 'm':
-            Min, Max = X_train.min(), X_train.max()
-            X_train = minmaxnorm(X_train)
-            X_valid, X_test = minmaxnorm(X_valid, Min, Max, clip), minmaxnorm(X_test, Min, Max, clip)
-        else:
-            X_train = ranknorm(X_train)
-            X_valid, X_test = ranknorm(X_valid), ranknorm(X_test)
-        X_train = clean(X_train)
-        X_valid = clean(X_valid)
-        X_test = clean(X_test)
-    else:
-        if norm == 'z':
-            mean, std = X_train.groupby(date).mean(), X_train.groupby(date).std()
-            X_train = zscorenorm(X_train, mean, std, clip)
-            X_valid = zscorenorm(X_valid, X_valid.groupby(date).mean(), X_valid.groupby(date).std(), clip)
-            X_test = zscorenorm(X_test, X_test.groupby(date).mean(), X_test.groupby(date).std(), clip)
-        elif norm == 'r':
-            median = X_train.groupby(date).median()
-            X_train = robustzscorenorm(X_train, median, clip)
-            X_valid = robustzscorenorm(X_valid, X_valid.groupby(date).median(), clip)
-            X_test = robustzscorenorm(X_test, X_test.groupby(date).median(), clip)
-        elif norm == 'm':
-            Min, Max = X_train.groupby(date).min(), X_train.groupby(date).max()
-            X_train = minmaxnorm(X_train, Min, Max, clip)
-            X_valid = minmaxnorm(X_valid, X_valid.groupby(date).min(), X_valid.groupby(date).max(), clip)
-            X_test = minmaxnorm(X_test, X_test.groupby(date).min(), X_test.groupby(date).max(), clip)
-        else:
-            X_train = ranknorm(X_train, groupby=date)
-            X_valid = ranknorm(X_valid, groupby=date)
-            X_test = ranknorm(X_test, groupby=date)
-
-        X_train = X_train.groupby(groupby).fillna(method='ffill').dropna()
-        X_valid = X_valid.groupby(groupby).fillna(method='ffill').dropna()
-        X_test = X_test.groupby(groupby).fillna(method='ffill').dropna()
-
-    print('norm data done', '\n')
-
-    # PCA降维
-    if orth:
-        result = make_pca(X_train)
-        pca, X_train = result["pca"], result["X_train"]
-        X_valid, X_test = pca.transform(X_valid), pca.transform(X_test)
-
-    # 特征选择
-    if select:
-        mi_score = make_mi_scores(X_train, y_train)
-        print(mi_score)
-        print(mi_score.describe())
-        X_train = feature_selector(X_train, mi_score, value=0, verbose=1)
-        X_valid = feature_selector(X_valid, mi_score)
-        X_test = feature_selector(X_test, mi_score)
-
     X_train, y_train = align(X_train, y_train)
     X_valid, y_valid = align(X_valid, y_valid)
     X_test, y_test = align(X_test, y_test)
@@ -605,8 +488,6 @@ def auto_process(X: pd.DataFrame, y: str, groupby: str = None, norm: str = "z", 
         "y_valid": y_valid,
         "X_test": X_test,
         "y_test": y_test,
-        "ymean": ymean,
-        "ystd": ystd
     }
     return returns
 
@@ -640,8 +521,8 @@ def auto_lrg(x: pd.DataFrame | pd.Series, y: pd.Series | pd.DataFrame, method: s
         lasso = linear_model.Lasso(alpha=alpha, max_iter=max_iter)
         model = lasso.fit(x, y)
     elif method == 'logistic':
-        log = linear_model.LogisticRegression()
-        model = log.fit(x, y)
+        logistic = linear_model.LogisticRegression()
+        model = logistic.fit(x, y)
     return model
 
 

@@ -236,12 +236,13 @@ def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int =
     """
     y_true.name = "label"
     y_true.index.names = pred.index.names
+
     if len(pred) > len(y_true):
         pred = pred[pred.index.isin(y_true.index)]
     else:
         y_true = y_true[y_true.index.isin(pred.index)]
+
     predict = pd.concat([pred, y_true], axis=1)
-    # print(predict)
     predict = predict.sort_values("predict", ascending=False)
     acc = accuracy(predict["predict"], predict["label"], sign=">=")
     print('Accuracy of Prediction:', acc)
@@ -267,11 +268,12 @@ def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int =
     win_rate = []
     mean_ret = []
     for c in cols:
-        dt = t_df[c] + 1
-        data.append(dt.cumprod() - 1)
+        # dt = t_df[c] + 1
+        # data.append(dt.cumprod() - 1)
+        data.append(t_df[c].cumsum())
         label.append(c)
         win_rate.append(len(t_df[t_df[c] >= 0]) / len(t_df))
-        mean_ret.append((dt.cumprod().values[-1] - 1) / len(t_df) * 100)
+        mean_ret.append(t_df[c].cumsum().values[-1] / len(t_df) * 100)
     plot(data, label, title='Grouped Return', xlabel='time_id', ylabel='value', figsize=figsize)
     plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar", figsize=figsize)
     plot(mean_ret, label=cols, title="Mean Return of Each Group(%)", mode="bar", figsize=figsize)

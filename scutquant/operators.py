@@ -299,8 +299,8 @@ def ts_cov(x1: pd.Series, x2: pd.Series, n_period: int) -> pd.Series:
     x1.name = "feature"
     x2.name = "label"
     concat_df = pd.concat([x1, x2], axis=1)
-    cov = concat_df.groupby(level=1).apply(lambda x: x["feature"].rolling(n_period).cov(x["label"])).reset_index(0,
-                                                                                                                 drop=True)
+    cov = concat_df.groupby(level=1).apply(lambda x:
+                                           x["feature"].rolling(n_period).cov(x["label"])).reset_index(0, drop=True)
     return cov.sort_index()
 
 
@@ -604,7 +604,7 @@ def mad_winsor(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
     return data.clip(upper=up, lower=down)
 
 
-def inf_mask(data: pd.Series) -> pd.Series:
+def inf_mask(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
     """
     Replace inf with nan
     """

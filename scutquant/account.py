@@ -33,8 +33,6 @@ class Account:
         self.sell_hist = []  # 卖出记录
         self.risk = None
         self.risk_curve = []
-        # todo: 增加换手率(turnover)
-        # 换手率等于基金在某一时期内的交易额除以该时期内基金的平均市值，再乘以100 %
         self.turnover = []
         self.trade_value = 0.0
 
@@ -86,7 +84,7 @@ class Account:
                 self.position[code] = order_buy[code]
                 self.available[code] = order_buy[code]
             buy_value += self.price[code] * order_buy[code]
-            self.trade_value += buy_value
+            self.trade_value += abs(buy_value)
         cost = max(min_cost, buy_value * cost_rate)
         self.cost += cost
         self.cash -= (buy_value + cost)  # 更新现金
@@ -102,7 +100,7 @@ class Account:
                 self.position[code] = -order_sell[code]
                 self.available[code] = -order_sell[code]
             sell_value += self.price[code] * order_sell[code]
-            self.trade_value += sell_value
+            self.trade_value += abs(sell_value)
         cost = max(min_cost, sell_value * cost_rate) if sell_value != 0 else 0
         self.cash += (sell_value - cost)  # 更新现金
 
@@ -118,7 +116,7 @@ class Account:
                 Account.sell(self, order['sell'], cost_buy, min_cost)
                 Account.buy(self, order['buy'], cost_sell, min_cost)
         self.trade_value = abs(self.trade_value)
-        self.turnover.append(self.trade_value * 2 / (self.value + value_before_trade))
+        self.turnover.append(self.trade_value / value_before_trade)
         Account.update_value(self)
 
     def auto_offset(self, freq: int, cost_buy: float = 0.0015, cost_sell: float = 0.0005, min_cost: float = 5):  # 自动平仓

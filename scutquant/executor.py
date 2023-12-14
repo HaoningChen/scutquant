@@ -1,33 +1,9 @@
-import pandas as pd
-from . import account, signal_generator, strategy
-
-
-def prepare(predict: pd.DataFrame, data: pd.DataFrame, price: str, volume: str, real_ret: pd.Series) -> pd.DataFrame:
-    """
-    :param predict: pd.DataFrame, 预测值, 应包括"predict"
-    :param data: pd.DataFrame, 提供时间和价格信息
-    :param price: str, data中表示价格的列名
-    :param volume: str, data中表示成交量的列名
-    :param real_ret: pd.Series, 真实收益率
-    :return: pd.DataFrame
-    """
-    data_ = data.copy()
-    predict.columns = ["predict"]
-    index = predict.index
-    data1 = data_[data_.index.isin(index)]
-    data1 = data1.reset_index()
-    data1 = data1.set_index(predict.index.names).sort_index()
-    predict["price"] = data1[price]
-    predict["volume"] = data1[volume]  # 当天的交易量, 假设交易量不会发生大的跳跃
-    predict.index.names = ["time", "code"]
-    predict["price"] = predict["price"].groupby(["code"]).shift(-1)  # 指令是T时生成的, 但是T+1执行, 所以是shift(-1)
-    predict["R"] = real_ret[real_ret.index.isin(predict.index)]  # 本来就是T+2对T+1的收益率, 因此不用前移
-    return predict.dropna()
+from . import account, strategy
+from .signal_generator import *
 
 
 class Executor:
     def __init__(self, generator: dict, stra, acc: dict, trade_params: dict):
-        # todo: 增加信号发射器的可选参数
         """
         :param generator: dict, 包括 'mode' 和其它内容, 为执行器找到合适的信号生成方式
         :param acc: dict, 账户
@@ -103,7 +79,6 @@ class Executor:
         return self.user_account.value * self.s.risk_degree - self.value_hold
 
     def execute(self, data: pd.DataFrame, verbose: int = 0):
-        # todo: 增加simulate模式
         """
         :param data: pd.DataFrame, 包括三列：'predict', 'volume', 'price', 'label' 以及多重索引[('time', 'code')]
         :param verbose: int, 是否输出交易记录
@@ -120,16 +95,15 @@ class Executor:
                 raise ValueError("data should include column" + price)
 
         check_names()
-        Executor.init_account(self, data)
-        Executor.create_account(self)
+        self.init_account(data)
+        self.create_account()
         if self.mode == "generate":
             time = data.index.get_level_values(0).unique().values
             for t in time:
                 idx = data["R"].groupby(data.index.names[0]).mean()  # 大盘收益率
                 self.time.append(t)
                 data_select = data[data.index.get_level_values(0) == t]
-                signal = signal_generator.generate(data=data_select, strategy=self.s,
-                                                   cash_available=Executor.get_cash_available(self))
+                signal = generate(data=data_select, strategy=self.s, cash_available=Executor.get_cash_available(self))
                 order, current_price = signal["order"], signal["current_price"]
 
                 if self.s.auto_offset:
