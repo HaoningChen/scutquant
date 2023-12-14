@@ -16,9 +16,33 @@ from tensorflow import keras
 """
 
 
+class Model:
+    def __init__(self, output_shape=1, model=None):
+        self.output_shape = output_shape
+        self.model = model
+        self.epochs = None
+        self.batch_size = None
+
+    def create_model(self, x_input):
+        pass
+
+    def fit(self, x_train, y_train, x_valid, y_valid):
+        if self.model is None:
+            self.create_model(x_train)
+        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
+                       batch_size=self.batch_size)
+
+    def predict(self, x_test):
+        predict = self.model.predict(x_test)
+        if self.output_shape == 1:
+            return predict.reshape(-1, )
+        else:
+            return predict
+
+
 class DNN:
-    def __init__(self, n_layers=2, activation="swish", optimizer="adam", loss="mse", metrics=None, l1=1e-5, l2=1e-5,
-                 epochs=10, batch_size=256, model=None):
+    def __init__(self, n_layers=2, output_shape=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
+                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
         if metrics is None:
             metrics = ["mae", "mape"]
         self.layers = n_layers
@@ -31,6 +55,7 @@ class DNN:
         self.epochs = epochs
         self.batch_size = batch_size
         self.model = model
+        self.output_shape = output_shape
 
     def create_model(self, x_input):
         shape = x_input.shape[1]
@@ -41,21 +66,12 @@ class DNN:
                              kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
         x = layers.Dense(256, activation=self.activation,
                          kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
-        output = layers.Dense(1, activation=self.activation,
+        output = layers.Dense(self.output_shape, activation=self.activation,
                               kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
 
         model = keras.Model(inputs, output)
         model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
-        return model
-
-    def fit(self, x_train, y_train, x_valid, y_valid):
-        self.model = DNN.create_model(self, x_train)
-        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
-                       batch_size=self.batch_size)
-
-    def predict(self, x_test):
-        predict = self.model.predict(x_test)
-        return predict.reshape(-1, )
+        self.model = model
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/dnn")
@@ -66,8 +82,8 @@ class DNN:
 
 
 class LSTM:
-    def __init__(self, n_layers=2, activation="swish", optimizer="adam", loss="mse", metrics=None, l1=1e-5, l2=1e-5,
-                 epochs=10, batch_size=256, model=None):
+    def __init__(self, n_layers=2, output_shape=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
+                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
         if metrics is None:
             metrics = ["mae", "mape"]
         self.layers = n_layers
@@ -80,6 +96,7 @@ class LSTM:
         self.epochs = epochs
         self.batch_size = batch_size
         self.model = model
+        self.output_shape = output_shape
 
     def create_model(self, x_input):
         shape = x_input.shape[1]
@@ -92,20 +109,11 @@ class LSTM:
                                 return_sequences=True)(x)
         x = layers.LSTM(shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
                         return_sequences=False)(x)
-        output = layers.Dense(1, activation=self.activation,
+        output = layers.Dense(self.output_shape, activation=self.activation,
                               kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
         model = keras.Model(inputs, output)
         model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
         return model
-
-    def fit(self, x_train, y_train, x_valid, y_valid):
-        self.model = LSTM.create_model(self, x_train)
-        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
-                       batch_size=self.batch_size)
-
-    def predict(self, x_test):
-        predict = self.model.predict(x_test)
-        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/lstm")
@@ -116,8 +124,8 @@ class LSTM:
 
 
 class Bi_LSTM:
-    def __init__(self, n_layers=2, activation="swish", optimizer="adam", loss="mse", metrics=None, l1=1e-5, l2=1e-5,
-                 epochs=10, batch_size=256, model=None):
+    def __init__(self, n_layers=2, output_shape=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
+                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
         if metrics is None:
             metrics = ["mae", "mape"]
         self.layers = n_layers
@@ -130,6 +138,7 @@ class Bi_LSTM:
         self.epochs = epochs
         self.batch_size = batch_size
         self.model = model
+        self.output_shape = output_shape
 
     def create_model(self, x_input):
         shape = x_input.shape[1]
@@ -143,20 +152,11 @@ class Bi_LSTM:
                                 return_sequences=True))(x)
         x = layers.Bidirectional(layers.LSTM(shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
                                              return_sequences=False))(x)
-        output = layers.Dense(1, activation=self.activation,
+        output = layers.Dense(self.output_shape, activation=self.activation,
                               kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
         model = keras.Model(inputs, output)
         model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
         return model
-
-    def fit(self, x_train, y_train, x_valid, y_valid):
-        self.model = Bi_LSTM.create_model(self, x_train)
-        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
-                       batch_size=self.batch_size)
-
-    def predict(self, x_test):
-        predict = self.model.predict(x_test)
-        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/bi-lstm")
@@ -170,9 +170,8 @@ class Attention:
     """
     复现了Attention Is All You Need 中的部分结构(指encoder, decoder目前还没实现)
     """
-
-    def __init__(self, n_attentions=8, n_encoders=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
-                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
+    def __init__(self, n_attentions=8, n_encoders=1, output_shape=1, activation="swish", optimizer="adam", loss="mse",
+                 metrics=None, l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
         if metrics is None:
             metrics = ["mae", "mape"]
         self.att = n_attentions
@@ -186,6 +185,7 @@ class Attention:
         self.epochs = epochs
         self.batch_size = batch_size
         self.model = model
+        self.output_shape = output_shape
 
     def encoder(self, query, value):
         # 选择用多个attention取简单平均, 而不是Multi-Head Attention(以后或许会修改)
@@ -211,20 +211,11 @@ class Attention:
             encoders.append(Attention.encoder(self, q, v))
 
         flatten = layers.Flatten()(sum(encoders))
-        output = layers.Dense(1, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(flatten)
+        output = layers.Dense(self.output_shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(flatten)
         model = keras.Model(inputs=inputs, outputs=output)
 
         model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
         return model
-
-    def fit(self, x_train, y_train, x_valid, y_valid):
-        self.model = Attention.create_model(self, x_train)
-        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
-                       batch_size=self.batch_size)
-
-    def predict(self, x_test):
-        predict = self.model.predict(x_test)
-        return predict.reshape(-1, )
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/attention")
@@ -235,8 +226,8 @@ class Attention:
 
 
 class CNN:
-    def __init__(self, n_layers=2, filters=32, kernel_size=9, strides=3, activation="swish", optimizer="adam",
-                 loss="mse", metrics=None, l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
+    def __init__(self, n_layers=2, filters=32, kernel_size=9, strides=3, output_shape=1, activation="swish",
+                 optimizer="adam", loss="mse", metrics=None, l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
         if metrics is None:
             metrics = ["mae", "mape"]
         self.layers = n_layers
@@ -252,6 +243,7 @@ class CNN:
         self.epochs = epochs
         self.batch_size = batch_size
         self.model = model
+        self.output_shape = output_shape
 
     def create_model(self):
         model = keras.Sequential()
@@ -280,7 +272,7 @@ class CNN:
 
     def fit(self, x_train, y_train, x_valid, y_valid):
         x_train, x_valid = x_train.values.reshape(-1, x_train.shape[1], 1), \
-                           x_valid.values.reshape(-1, x_valid.shape[1], 1)
+            x_valid.values.reshape(-1, x_valid.shape[1], 1)
         self.model = CNN.create_model(self)
         self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
                        batch_size=self.batch_size)
@@ -288,7 +280,10 @@ class CNN:
     def predict(self, x_test):
         x_test = x_test.values.reshape(-1, x_test.shape[1], 1)
         predict = self.model.predict(x_test)
-        return predict.reshape(-1, )
+        if self.output_shape == 1:
+            return predict.reshape(-1, )
+        else:
+            return predict
 
     def save(self, target_dir=''):
         self.model.save(target_dir + "/cnn")
@@ -321,7 +316,7 @@ class Ensemble:
             self.weight = [w for _ in range(len(self.models))] if self.weight is None else self.weight
 
     def fit(self, X_train, y_train, X_valid, y_valid):
-        Ensemble.create_model(self, X_train)
+        self.create_model(X_train)
         for i in range(len(self.models)):
             self.models[i].fit(X_train, y_train, X_valid, y_valid)
 

@@ -1,5 +1,5 @@
 import pandas as pd
-from . import account, signal_generator, strategy  # 别动这行！
+from . import account, signal_generator, strategy
 
 
 def prepare(predict: pd.DataFrame, data: pd.DataFrame, price: str, volume: str, real_ret: pd.Series) -> pd.DataFrame:

@@ -41,7 +41,7 @@ def information_ratio(ret: pd.Series | pd.DataFrame, benchmark: pd.Series | pd.D
     """
     ret_copy = pd.Series(ret)
     benchmark_copy = pd.Series(benchmark)
-    return (ret_copy.mean() - benchmark_copy.mean()) / ret_copy.std()
+    return (ret_copy.mean() - benchmark_copy.mean()) / (ret_copy - benchmark_copy).std()
 
 
 def calc_drawdown(data: pd.Series) -> pd.Series:
@@ -267,10 +267,11 @@ def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int =
     win_rate = []
     mean_ret = []
     for c in cols:
-        data.append(t_df[c].cumsum())
+        dt = t_df[c] + 1
+        data.append(dt.cumprod() - 1)
         label.append(c)
         win_rate.append(len(t_df[t_df[c] >= 0]) / len(t_df))
-        mean_ret.append(t_df[c].cumsum().values[-1] / len(t_df) * 100)
+        mean_ret.append((dt.cumprod().values[-1] - 1) / len(t_df) * 100)
     plot(data, label, title='Grouped Return', xlabel='time_id', ylabel='value', figsize=figsize)
     plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar", figsize=figsize)
     plot(mean_ret, label=cols, title="Mean Return of Each Group(%)", mode="bar", figsize=figsize)
