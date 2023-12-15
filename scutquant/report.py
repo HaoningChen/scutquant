@@ -159,8 +159,8 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
             days += 1
     days /= len(acc_ret)
 
-    acc_mdd = calc_drawdown(pd.Series(acc_ret))
-    ben_mdd = calc_drawdown(pd.Series(ben_ret))
+    acc_dd = calc_drawdown(pd.Series(acc_ret))
+    ben_dd = calc_drawdown(pd.Series(ben_ret))
 
     ret = pd.Series(acc_ret)  # 累计收益率
     ben = pd.Series(ben_ret)  # benchmark的累计收益率
@@ -186,8 +186,8 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
     print('Cumulative Rate of Return:', acc_ret[-1])
     print('Cumulative Rate of Return(Benchmark):', ben_ret[-1])
     print('Cumulative Excess Rate of Return:', excess_ret[-1], '\n')
-    print('Max Drawdown:', acc_mdd.min())
-    print('Max Drawdown(Benchmark):', ben_mdd.min())
+    print('Max Drawdown:', acc_dd.min())
+    print('Max Drawdown(Benchmark):', ben_dd.min())
     print('Max Drawdown(Excess Return):', calc_drawdown(pd.Series(excess_ret) + 1).min(), '\n')
     print('Sharpe Ratio:', sharpe)
     print('Sortino Ratio:', sortino)
@@ -198,19 +198,34 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
     print('Profitable Days(%):', days)
 
     if show_raw_value:
-        acc_val = pd.DataFrame(acc_val, columns=["acc_val"], index=time)
-        ben_val = pd.DataFrame(ben_val, columns=["acc_val"], index=time)
-        plot([acc_val, ben_val], label=['cum_return', 'benchmark'], title='Return', ylabel='value',
-             figsize=figsize)
+        acc_val = pd.Series(acc_val, name="acc_val", index=time)
+        ben_val = pd.Series(ben_val, name="ben_val", index=time)
+        plt.figure(figsize=(10, 6))
+        plt.plot(acc_val, label="return", color="red")
+        plt.plot(ben_val, label="benchmark", color="blue")
+        plt.plot(acc_val - ben_val, label="excess_return", color="orange")
+        plt.legend()
+        plt.show()
     else:
-        acc_ret = pd.DataFrame(acc_ret, columns=["acc_ret"], index=time)
-        ben_ret = pd.DataFrame(ben_ret, columns=["acc_ret"], index=time)
-        plot([acc_ret, ben_ret], label=['cum_return_rate', 'benchmark'], title='Rate of Return',
-             ylabel='value', figsize=figsize)
-    if excess_return:
-        excess_ret = pd.DataFrame(excess_ret, columns=["excess_ret"], index=time)
-        plot([excess_ret], label=['excess_return'], title='Excess Rate of Return', ylabel='value',
-             figsize=figsize)
+        acc_ret = pd.Series(acc_ret, name="acc_ret", index=time)
+        ben_ret = pd.Series(ben_ret, name="ben_ret", index=time)
+        excess_ret = pd.Series(excess_ret, name="excess_ret", index=time)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(acc_ret, label="return", color="red")
+        plt.plot(ben_ret, label="benchmark", color="blue")
+        plt.plot(excess_ret, label="excess_return", color="orange")
+        plt.legend()
+        plt.title("Returns")
+        plt.show()
+
+    plt.clf()
+    plt.figure(figsize=(10, 6))
+    plt.plot(acc_dd, label="drawdown")
+    plt.plot(ben_dd, label="excess_return_drawdown")
+    plt.legend()
+    plt.title("Drawdown")
+    plt.show()
 
     if risk:
         risk = pd.DataFrame({'risk': user_account.risk_curve}, index=time)

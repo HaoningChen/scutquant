@@ -5,14 +5,15 @@ price = {
     ......
 }
 """
+import pandas as pd
 
 
-def get_price(data, price: str = "price") -> dict:
+def get_price(data: pd.DataFrame, price: str = "price") -> dict:
     current_price = data.droplevel(0)[price].to_dict()
     return current_price
 
 
-def get_vol(data, volume: str = "volume") -> dict:
+def get_vol(data: pd.DataFrame, volume: str = "volume") -> dict:
     current_volume = data.droplevel(0)[volume].to_dict()
     return current_volume
 
@@ -41,8 +42,8 @@ class BaseStrategy:
 class TopKStrategy(BaseStrategy):
     """
     受分组累计收益率启发(参考report模块的group_return_ana): 做多预测收益率最高的n个资产, 做空预测收益率最低的n个资产,
-                                                    并在未来平仓. 此时得到的收益率是最高的.
-    同样地, 由于中国市场难以做空, 我们仍然可以设buy_only=True. 这样得到的收益就是Group1的收益.
+                                                    并在未来平仓.
+    同样地, 由于中国市场难以做空, 我们可以设buy_only=True.
     这里的k是个百分数, 意为做多资产池中排前k%的资产, 做空排后k%的资产
     """
 
@@ -58,8 +59,6 @@ class TopKStrategy(BaseStrategy):
             kwargs["offset_freq"] = 1
         if "long_only" not in kwargs.keys():
             kwargs["long_only"] = False
-        if "short_volume" not in kwargs.keys():
-            kwargs["short_volume"] = 0  # 为0时，只能用底仓做空; >0时允许融券做空
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -71,12 +70,11 @@ class TopKStrategy(BaseStrategy):
         self.auto_offset = kwargs["auto_offset"]
         self.offset_freq = kwargs["offset_freq"]
         self.long_only = kwargs["long_only"]
-        self.num = kwargs["short_volume"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
 
-    def to_signal(self, data, pred="predict", index_level="code"):
+    def to_signal(self, data: pd.DataFrame, pred: str = "predict", index_level: str = "code"):
         n_k = int(len(data) * self.k + 0.5)
         price = get_price(data, price="price")
         data_ = data.copy().sort_values("predict", ascending=False)

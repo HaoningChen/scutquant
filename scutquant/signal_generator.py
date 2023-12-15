@@ -57,10 +57,10 @@ def get_trade_volume(signal: pd.Series, price: pd.Series, volume: pd.Series, thr
     :param unit:
     :return:
     """
-    trade_volume = signal / price
+    trade_volume = abs(signal) / price  # 现在是以股作为单位
     if unit == "lot":
-        trade_volume /= 100
-    max_volume = volume * threshold
+        trade_volume /= 100  # 除以100使其变成以手为单位
+    max_volume = volume * threshold  # 这也是以手为单位
     trade_volume.where(trade_volume <= max_volume, max_volume)
     return (trade_volume + 0.5).astype(int) * 100  # 四舍五入取整, 最后以股作为单位
 
