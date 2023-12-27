@@ -82,9 +82,15 @@ def plot(data, label, title: str = None, xlabel: str = None, ylabel: str = None,
         plt.figure(figsize=figsize)
     # plt.clf()
     if mode == "plot":
-        for d in range(len(data)):
-            plt.plot(data[d], label=label[d])
-            plt.xticks(rotation=45)
+        if len(data) > 10:
+            cmap = plt.get_cmap('tab20')
+            for d in range(len(data)):
+                plt.plot(data[d], label=label[d], color=cmap(d))
+                plt.xticks(rotation=45)
+        else:
+            for d in range(len(data)):
+                plt.plot(data[d], label=label[d])
+                plt.xticks(rotation=45)
     elif mode == "bar":
         bar = plt.bar(label, data, label="value")
         plt.bar_label(bar, label_type='edge')
@@ -122,16 +128,13 @@ def accuracy(pred: pd.Series, y: pd.Series, sign: str = ">=") -> float:
     return len(data_true) / len(data)
 
 
-def report_all(user_account, benchmark, show_raw_value: bool = False, excess_return: bool = True, risk: bool = True,
-               turnover: bool = True, rf: float = 0.03, freq: float = 1, time=None, figsize: tuple = (10, 6)) -> None:
+def report_all(user_account, benchmark, show_raw_value: bool = False, rf: float = 0.03, freq: float = 1, time=None,
+               figsize: tuple = (10, 6)) -> None:
     """
 
     :param user_account: account类
     :param benchmark: account类
     :param show_raw_value: 显示原始市值（具体金额）
-    :param excess_return: 显示超额收益曲线
-    :param risk: 显示风险度
-    :param turnover: 显示换手率
     :param rf: 显示无风险利率
     :param freq: 频率, 日频为1，月频为30，其它类推
     :param time: 显示时间轴
@@ -159,20 +162,22 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
             days += 1
     days /= len(acc_ret)
 
-    acc_dd = calc_drawdown(pd.Series(acc_ret))
-    ben_dd = calc_drawdown(pd.Series(ben_ret))
+    acc_ret = pd.Series(acc_ret, name="acc_ret", index=time)  # 累计收益率
+    ben_ret = pd.Series(ben_ret, name="ben_ret", index=time)  # benchmark的累计收益率
+    excess_ret = pd.Series(excess_ret, name="excess_ret", index=time)
 
-    ret = pd.Series(acc_ret)  # 累计收益率
-    ben = pd.Series(ben_ret)  # benchmark的累计收益率
+    acc_dd = calc_drawdown(acc_ret)
+    ben_dd = calc_drawdown(ben_ret)
+    excess_dd = calc_drawdown(excess_ret)
 
-    ann_return = annualized_return(ret, freq=freq)
-    ann_std = annualized_volatility(ret, freq=freq)
-    ben_ann_return = annualized_return(ben, freq=freq)
-    ben_ann_std = annualized_volatility(ben, freq=freq)
+    ann_return = annualized_return(acc_ret, freq=freq)
+    ann_std = annualized_volatility(acc_ret, freq=freq)
+    ben_ann_return = annualized_return(ben_ret, freq=freq)
+    ben_ann_std = annualized_volatility(ben_ret, freq=freq)
 
-    beta = ret.cov(ben) / ben.var()
-    alpha = ret.mean() - beta * ben.mean()
-    epsilon = pd.Series(ret - beta * ben - alpha).std()
+    beta = acc_ret.cov(ben_ret) / ben_ret.var()
+    alpha = acc_ret.mean() - beta * ben_ret.mean()
+    epsilon = (acc_ret - beta * ben_ret - alpha).std()
 
     sharpe = sharpe_ratio(acc_ret, rf=rf, freq=freq * 365)
     sortino = sortino_ratio(acc_ret, ben_ret)
@@ -207,10 +212,6 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
         plt.legend()
         plt.show()
     else:
-        acc_ret = pd.Series(acc_ret, name="acc_ret", index=time)
-        ben_ret = pd.Series(ben_ret, name="ben_ret", index=time)
-        excess_ret = pd.Series(excess_ret, name="excess_ret", index=time)
-
         plt.figure(figsize=(10, 6))
         plt.plot(acc_ret, label="return", color="red")
         plt.plot(ben_ret, label="benchmark", color="blue")
@@ -222,21 +223,19 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, excess_ret
     plt.clf()
     plt.figure(figsize=(10, 6))
     plt.plot(acc_dd, label="drawdown")
-    plt.plot(ben_dd, label="excess_return_drawdown")
+    plt.plot(excess_dd, label="excess_return_drawdown")
     plt.legend()
     plt.title("Drawdown")
     plt.show()
 
-    if risk:
-        risk = pd.DataFrame({'risk': user_account.risk_curve}, index=time)
-        plot([risk], label=['risk_degree'], title='Risk Degree', ylabel='value', figsize=figsize)
+    risk = pd.DataFrame({'risk': user_account.risk_curve}, index=time)
+    plot([risk], label=['risk_degree'], title='Risk Degree', ylabel='value', figsize=figsize)
 
-    if turnover:
-        risk = pd.DataFrame({'turnover': user_account.turnover}, index=time)
-        plot([risk], label=['turnover'], title='Turnover', figsize=figsize)
+    risk = pd.DataFrame({'turnover': user_account.turnover}, index=time)
+    plot([risk], label=['turnover'], title='Turnover', figsize=figsize)
 
 
-def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int = 5, groupby: str = "time",
+def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int = 10, groupby: str = "time",
                      figsize: tuple = (10, 6)) -> None:
     """
     因子对股票是否有良好的区分度, 若有, 则应出现明显的分层效应(即单调性)
@@ -283,12 +282,10 @@ def group_return_ana(pred: pd.DataFrame | pd.Series, y_true: pd.Series, n: int =
     win_rate = []
     mean_ret = []
     for c in cols:
-        # dt = t_df[c] + 1
-        # data.append(dt.cumprod() - 1)
         data.append(t_df[c].cumsum())
         label.append(c)
-        win_rate.append(len(t_df[t_df[c] >= 0]) / len(t_df))
-        mean_ret.append(t_df[c].cumsum().values[-1] / len(t_df) * 100)
+        win_rate.append(round(len(t_df[t_df[c] >= 0]) / len(t_df), 4))
+        mean_ret.append(round(t_df[c].cumsum().values[-1] / len(t_df) * 100, 4))
     plot(data, label, title='Grouped Return', xlabel='time_id', ylabel='value', figsize=figsize)
     plot(win_rate, label=cols, title="Win Rate of Each Group", mode="bar", figsize=figsize)
     plot(mean_ret, label=cols, title="Mean Return of Each Group(%)", mode="bar", figsize=figsize)

@@ -25,7 +25,7 @@ class Account:
 
     def __init__(self, init_cash: float, position: dict, available: dict, init_price: dict):
         self.cash = init_cash  # 可用资金
-        self.cash_available = deepcopy(init_cash)
+        # self.cash_available = deepcopy(init_cash)
         self.position = position  # keys应包括所有资产，如无头寸则值为0，以便按照keys更新持仓
         self.available = available  # 需要持有投资组合的底仓，否则按照T+1制度无法做空
         self.price = init_price  # 资产价格
@@ -39,7 +39,7 @@ class Account:
         self.turnover = []
         self.trade_value = 0.0
 
-    def generate_total_order(self, order: dict, freq: int) -> dict:
+    def adjust_order(self, order: dict, freq: int) -> dict:
         order_offset = self.auto_offset(freq)
         if order_offset is not None:
             for key in order_offset["buy"].keys():
@@ -55,8 +55,8 @@ class Account:
                     order["sell"][key] += order_offset["sell"][key]
         return order
 
-    def check_order(self, order: dict, price: dict, cost_rate: float = 0.0015, min_cost: float = 5) -> \
-            tuple[dict, bool]:  # 检查是否有足够的资金完成order, 如果不够则不买
+    def check_order(self, order: dict, price: dict, cost_rate: float = 0.0015, min_cost: float = 5) -> dict:
+        # 检查是否有足够的资金完成order, 如果不够则调整订单(sell不变, buy按比例减少)
         cash_inflow = 0.0
         cash_outflow = 0.0
         order_copy = deepcopy(order)
@@ -74,11 +74,13 @@ class Account:
                 order["buy"].pop(code)
         cost = max(min_cost, (cash_inflow + cash_outflow) * cost_rate)
         cash_needed = cash_outflow - cash_inflow + cost
-        # print("cash_needed: ", cash_needed, "cash: ", self.cash)
         if cash_needed > self.cash:
-            return order, False
-        else:
-            return order, True
+            # c_n = buy + r(buy + sell) - sell > c, 令n * buy + r(n * buy + sell) - sell = c
+            # 则n * buy * (1 + r) - (1 - r) * sell = c, 即 n * buy * (1 + r) = c + (1 - r)sell
+            # n = (c + (1 - r)sell) / buy(1 + r)
+            ratio = (self.cash + (1 - cost_rate) * cash_inflow) / (cash_outflow * (1 + cost_rate))
+            order["buy"] = {k: int(v * ratio + 0.5) for k, v in order["buy"].items()}  # 这样虽然不是整手下单, 但只要在1手以上都没问题
+        return order
 
     def update_price(self, price: dict):  # 更新市场价格
         for code in price.keys():

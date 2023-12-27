@@ -19,12 +19,11 @@ def market_neutralize(x: pd.Series, long_only: bool = False) -> pd.Series:
     """
     _mean = x.groupby(level=0).mean()
     x -= _mean
-    if long_only:  # 考虑到A股有做空限制, 因此将权重为负的股票(即做空的股票)的权重调整为0(即纯多头), 并相应调整多头的权重
-        x[x.values < 0] = 0
-        abs_sum = x[x.values > 0].groupby(level=0).sum()
-    else:
-        abs_sum = abs(x).groupby(level=0).sum()
+    abs_sum = abs(x).groupby(level=0).sum()
     x /= abs_sum
+    if long_only:
+        x[x < 0] = 0
+        x *= 2
     return x
 
 
@@ -119,6 +118,7 @@ class Alpha:
         pass
 
     def normalize(self):
+        self.result = mad_winsor(inf_mask(self.result))
         if self.norm_method == "zscore":
             self.result = cs_zscore(self.result)
         elif self.norm_method == "robust_zscore":
