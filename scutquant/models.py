@@ -1,337 +1,200 @@
-from keras import layers, regularizers, models
-from tensorflow import keras
+import torch
+from torch import Tensor
+import torch.nn.functional as f
+import numpy as np
+from pandas import DataFrame, Series, concat
 
 """
-    example:
+目前models模块使用pytorch实现, 这样可以更好地接入图神经网络模块
 
-    dnn = DNN(epochs=1)
-    dnn.fit(x_train, y_train, x_valid, y_valid)  # 训练模型
-    pred = dnn.predict(x_test)  # 获取预测值
-    model = dnn.model  # 获取模型(用于保存和部署)
+输入仍然可以是有多重索引 [(datetime, instrument)] 的DataFrame和Series, 但模型训练之前会自动将数据按天拆成一个list, 并以一天的数据量作为batch
+(所以batch size是会变的)
 
-    其它模型同理
-    
-    目前实现的模型包括: DNN, CNN, LSTM, Bi-LSTM和Attention (scutquant模块还有OLS, ridge, lasso, XGBoost, hybrid和lightGBM)
-    计划实现的模型包括: RNN, GRU
+增加了MSEPlus函数, 可以通过调参精确控制预测值与某个变量的相关系数大小
 """
 
 
-class Model:
-    def __init__(self, output_shape=1, model=None):
+def get_daily_inter(data: Series | DataFrame, shuffle=False):
+    daily_count = data.groupby(level=0).size().values
+    daily_index = np.roll(np.cumsum(daily_count), 1)
+    daily_index[0] = 0
+    if shuffle:
+        daily_shuffle = list(zip(daily_index, daily_count))
+        np.random.shuffle(daily_shuffle)
+        daily_index, daily_count = zip(*daily_shuffle)
+    return daily_index, daily_count
+
+
+def from_pandas_to_list(x, for_cnn: bool = False):
+    if isinstance(x, DataFrame) or isinstance(x, Series):
+        dataset = []
+        daily_index, daily_count = get_daily_inter(x)
+        for index, count in zip(daily_index, daily_count):
+            batch = slice(index, index + count)
+            data_slice = x.iloc[batch]
+            value = data_slice.values.reshape(-1, data_slice.shape[1], 1) if for_cnn else data_slice.values
+            if value.ndim == 1:
+                dataset.append(torch.from_numpy(np.squeeze(value)).to(torch.float32).view(-1, 1))
+            else:
+                dataset.append(torch.from_numpy(value).to(torch.float32))
+        return dataset
+    else:
+        return x
+
+
+def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, for_cnn: bool = False):
+    """
+    将DataFrame或Series拆成list, 并根据模型类型对数据的shape进行调整
+    """
+    x_train, x_valid = from_pandas_to_list(x_train, for_cnn), from_pandas_to_list(x_valid, for_cnn)
+    y_train, y_valid = from_pandas_to_list(y_train), from_pandas_to_list(y_valid)
+    if z_train is not None:
+        z_train = from_pandas_to_list(z_train)
+    if z_valid is not None:
+        z_valid = from_pandas_to_list(z_valid)
+    return x_train, y_train, x_valid, y_valid, z_train, z_valid
+
+
+def calc_tensor_corr(x: Tensor, y: Tensor):
+    if x.shape != y.shape:
+        raise ValueError("The shapes of x and y must be the same.")
+    mean_x = torch.mean(x)
+    mean_y = torch.mean(y)
+    std_x = torch.std(x)
+    std_y = torch.std(y)
+    return torch.mean((x - mean_x) * (y - mean_y)) / (std_x * std_y)
+
+
+def split_dataset_by_index(dataset: list, train_index, test_index):
+    """
+    用于滚动训练
+    """
+    f_array = np.zeros(shape=(len(dataset),)).astype(bool)
+    train_mask, test_mask = f_array.copy(), f_array.copy()
+    train_mask[train_index] = True
+    test_mask[test_index] = True
+    d_train = [d for d, mask in zip(dataset, train_mask.tolist()) if mask]
+    d_test = [d for d, mask in zip(dataset, test_mask.tolist()) if mask]
+    return d_train, d_test
+
+
+class MSEPlus(torch.nn.Module):
+    def __init__(self):
+        """
+        当我们想控制预测值和某个变量的相关系数时
+
+        self.loss = MSEPlus()
+        self.loss((x, y, size))
+        """
+        super().__init__()
+        self.mse = torch.nn.MSELoss()
+
+    def forward(self, inputs: tuple):
+        x, y, z = inputs[0], inputs[1], inputs[2]
+        mse_loss = self.mse(x, y)
+        ic_loss = calc_tensor_corr(x, z)
+        # return mse_loss * (1 + 0.1 * (torch.abs(ic_loss) - ic_loss))  # 对ic为负的双倍惩罚, 对ic为正的不作额外惩罚
+        return mse_loss * (1 + 0.05 * torch.abs(ic_loss))
+
+
+class MLP(torch.nn.Module):
+    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int, epochs: int = 10, loss: str = "mse_loss",
+                 lr: float = 1e-3, weight_decay: float = 5e-4, dropout: float = 0.3, model=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_shape = input_shape
+        self.hidden_shape = hidden_shape
         self.output_shape = output_shape
+        self.feature_filter = torch.nn.Linear(in_features=self.input_shape, out_features=self.hidden_shape, bias=False)
+        self.hidden_layer = torch.nn.Linear(in_features=self.hidden_shape, out_features=self.hidden_shape)
+        self.out_layer = torch.nn.Linear(in_features=self.hidden_shape, out_features=self.output_shape)
+        self.jump_layer = torch.nn.Linear(in_features=self.input_shape, out_features=self.hidden_shape)
+        self.bn = torch.nn.BatchNorm1d(self.hidden_shape)
+        self.epochs = epochs
+        self.loss = loss if loss != "special" else MSEPlus()
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.dropout = dropout
         self.model = model
-        self.epochs = None
-        self.batch_size = None
+        self.optimizer = None
 
-    def create_model(self, x_input):
-        pass
+    def init_model(self):
+        self.model = MLP(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
+                         output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
+                         weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
 
-    def fit(self, x_train, y_train, x_valid, y_valid):
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+    def forward(self, x):
+        x1 = f.relu(self.jump_layer(x))
+        x1 = f.dropout(x1, p=self.dropout, training=self.training)
+
+        x = self.feature_filter(x)
+        x = f.relu(x)
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        x = self.hidden_layer(x)
+        x = f.relu(x)
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        return self.out_layer(self.bn(x + x1))
+
+    def get_loss(self, x, y, z=None):
+        self.model.train()
+        self.optimizer.zero_grad()
+        out = self.model(x)
+        if isinstance(self.loss, str):
+            loss = eval("f." + self.loss + "(out, y)")
+        else:
+            loss = self.loss((out, y, z))
+        loss.backward()
+        self.optimizer.step()
+        return float(loss)
+
+    @torch.no_grad()
+    def predict_(self, x):
+        self.model.eval()
+        pred = self.model(x)
+        return pred
+
+    @torch.no_grad()
+    def test(self, x, y, z=None):
+        pred_ = self.predict_(x)
+        if isinstance(self.loss, str):
+            loss = eval("f." + self.loss + "(pred_, y)")
+        else:
+            loss = self.loss((pred_, y, z))
+        return float(loss)
+
+    def fit(self, x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None):
         if self.model is None:
-            self.create_model(x_train)
-        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
-                       batch_size=self.batch_size)
+            self.init_model()
 
-    def predict(self, x_test):
-        predict = self.model.predict(x_test)
-        if self.output_shape == 1:
-            return predict.reshape(-1, )
-        else:
-            return predict
+        x_train, y_train, x_valid, y_valid, z_train, z_valid = transform_data(x_train, y_train, x_valid, y_valid,
+                                                                              z_train, z_valid)
 
+        for epoch in range(1, self.epochs + 1):
+            total_loss_train = 0
+            total_loss_val = 0
+            val_ic = 0
+            for i in range(len(x_train)):
+                loss_train = self.get_loss(x=x_train[i], y=y_train[i], z=z_train[i] if z_train is not None else None)
+                total_loss_train += loss_train
+            for i in range(len(x_valid)):
+                loss_val = self.test(x=x_valid[i], y=y_valid[i], z=z_valid[i] if z_valid is not None else None)
+                total_loss_val += loss_val
+                val_ic += float(calc_tensor_corr(self.predict_(x_valid[i]), y_valid[i]))
+            print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
+                  total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
 
-class DNN:
-    def __init__(self, n_layers=2, output_shape=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
-                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
-        if metrics is None:
-            metrics = ["mae", "mape"]
-        self.layers = n_layers
-        self.activation = activation
-        self.optimizer = optimizer
-        self.loss = loss
-        self.metrics = metrics
-        self.l1 = l1
-        self.l2 = l2
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.model = model
-        self.output_shape = output_shape
+    def predict_pandas(self, x: DataFrame, for_cnn: bool = False) -> Series:
+        index = x.index
+        x = from_pandas_to_list(x, for_cnn)
+        result = []
+        for batch in x:
+            result.append(Series(self.predict_(batch).view(-1, )))
+        series = concat(result, axis=0)
+        series.index = index
+        return series
 
-    def create_model(self, x_input):
-        shape = x_input.shape[1]
-        inputs = keras.Input(shape=(shape,))
-        x = layers.Dense(shape, activation=self.activation)(inputs)
-        for i in range(self.layers - 1):
-            x = layers.Dense(1024, activation=self.activation,
-                             kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
-        x = layers.Dense(256, activation=self.activation,
-                         kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
-        output = layers.Dense(self.output_shape, activation=self.activation,
-                              kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
-
-        model = keras.Model(inputs, output)
-        model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
-        self.model = model
-
-    def save(self, target_dir=''):
-        self.model.save(target_dir + "/dnn")
-
-    def load(self, target_dir=''):
-        model = models.load_model(target_dir + "/dnn")
-        self.model = model
-
-
-class LSTM:
-    def __init__(self, n_layers=2, output_shape=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
-                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
-        if metrics is None:
-            metrics = ["mae", "mape"]
-        self.layers = n_layers
-        self.activation = activation
-        self.optimizer = optimizer
-        self.loss = loss
-        self.metrics = metrics
-        self.l1 = l1
-        self.l2 = l2
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.model = model
-        self.output_shape = output_shape
-
-    def create_model(self, x_input):
-        shape = x_input.shape[1]
-        inputs = keras.Input(shape=(shape,))
-
-        x = layers.Reshape((-1, shape,))(inputs)
-        if self.layers > 1:
-            for i in range(self.layers - 1):
-                x = layers.LSTM(shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
-                                return_sequences=True)(x)
-        x = layers.LSTM(shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
-                        return_sequences=False)(x)
-        output = layers.Dense(self.output_shape, activation=self.activation,
-                              kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
-        model = keras.Model(inputs, output)
-        model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
-        return model
-
-    def save(self, target_dir=''):
-        self.model.save(target_dir + "/lstm")
-
-    def load(self, target_dir=''):
-        model = models.load_model(target_dir + "/lstm")
-        self.model = model
-
-
-class Bi_LSTM:
-    def __init__(self, n_layers=2, output_shape=1, activation="swish", optimizer="adam", loss="mse", metrics=None,
-                 l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
-        if metrics is None:
-            metrics = ["mae", "mape"]
-        self.layers = n_layers
-        self.activation = activation
-        self.optimizer = optimizer
-        self.loss = loss
-        self.metrics = metrics
-        self.l1 = l1
-        self.l2 = l2
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.model = model
-        self.output_shape = output_shape
-
-    def create_model(self, x_input):
-        shape = x_input.shape[1]
-        inputs = keras.Input(shape=(shape,))
-
-        x = layers.Reshape((-1, shape,))(inputs)
-        if self.layers > 1:
-            for i in range(self.layers - 1):
-                x = layers.Bidirectional(
-                    layers.LSTM(shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
-                                return_sequences=True))(x)
-        x = layers.Bidirectional(layers.LSTM(shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
-                                             return_sequences=False))(x)
-        output = layers.Dense(self.output_shape, activation=self.activation,
-                              kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(x)
-        model = keras.Model(inputs, output)
-        model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
-        return model
-
-    def save(self, target_dir=''):
-        self.model.save(target_dir + "/bi-lstm")
-
-    def load(self, target_dir=''):
-        model = models.load_model(target_dir + "/bi-lstm")
-        self.model = model
-
-
-class Attention:
-    """
-    复现了Attention Is All You Need 中的部分结构(指encoder, decoder目前还没实现)
-    """
-    def __init__(self, n_attentions=8, n_encoders=1, output_shape=1, activation="swish", optimizer="adam", loss="mse",
-                 metrics=None, l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
-        if metrics is None:
-            metrics = ["mae", "mape"]
-        self.att = n_attentions
-        self.encoders = n_encoders
-        self.activation = activation
-        self.optimizer = optimizer
-        self.loss = loss
-        self.metrics = metrics
-        self.l1 = l1
-        self.l2 = l2
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.model = model
-        self.output_shape = output_shape
-
-    def encoder(self, query, value):
-        # 选择用多个attention取简单平均, 而不是Multi-Head Attention(以后或许会修改)
-        att = []
-        for i in range(0, self.att):
-            att.append(layers.Attention()([query, value]))
-        weight_average_attention = sum(att) / self.att
-        ln_1 = layers.LayerNormalization()(weight_average_attention + query + value)  # 残差连接
-        # 下面省略了全连接部分，因为发现加上全连接层效果不好
-        return ln_1
-
-    def create_model(self, x_input):
-        shape = x_input.shape[1]
-        inputs = keras.Input(shape=(shape,))
-
-        q = layers.Dense(1024, activation=self.activation,
-                         kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(inputs)
-        v = layers.Dense(1024, activation=self.activation,
-                         kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(inputs)
-
-        encoders = []
-        for i in range(self.encoders):
-            encoders.append(Attention.encoder(self, q, v))
-
-        flatten = layers.Flatten()(sum(encoders))
-        output = layers.Dense(self.output_shape, kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2))(flatten)
-        model = keras.Model(inputs=inputs, outputs=output)
-
-        model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
-        return model
-
-    def save(self, target_dir=''):
-        self.model.save(target_dir + "/attention")
-
-    def load(self, target_dir=''):
-        model = models.load_model(target_dir + "/attention")
-        self.model = model
-
-
-class CNN:
-    def __init__(self, n_layers=2, filters=32, kernel_size=9, strides=3, output_shape=1, activation="swish",
-                 optimizer="adam", loss="mse", metrics=None, l1=1e-5, l2=1e-5, epochs=10, batch_size=256, model=None):
-        if metrics is None:
-            metrics = ["mae", "mape"]
-        self.layers = n_layers
-        self.filters = filters
-        self.kernel_size = kernel_size
-        self.strides = strides
-        self.activation = activation
-        self.optimizer = optimizer
-        self.loss = loss
-        self.metrics = metrics
-        self.l1 = l1
-        self.l2 = l2
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.model = model
-        self.output_shape = output_shape
-
-    def create_model(self):
-        model = keras.Sequential()
-        n_filters = self.filters
-        kernel_size = self.kernel_size
-        strides = self.strides
-
-        if self.layers > 1:
-            for i in range(self.layers - 1):
-                model.add(
-                    layers.Conv1D(n_filters, kernel_size=kernel_size, strides=strides, activation=self.activation))
-                model.add(layers.BatchNormalization())
-                model.add(layers.MaxPooling1D(pool_size=2, strides=1))
-                n_filters *= 2
-                kernel_size = kernel_size - 2 if kernel_size > 2 else 1
-
-        model.add(
-            layers.Conv1D(n_filters, kernel_size=kernel_size, strides=strides, activation=self.activation))
-        model.add(layers.BatchNormalization())
-        model.add(layers.MaxPooling1D(pool_size=2, strides=1))
-
-        model.add(layers.Flatten())
-        model.add(layers.Dense(1, kernel_regularizer=regularizers.l1_l2(self.l1, self.l2)))
-        model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
-        return model
-
-    def fit(self, x_train, y_train, x_valid, y_valid):
-        x_train, x_valid = x_train.values.reshape(-1, x_train.shape[1], 1), \
-            x_valid.values.reshape(-1, x_valid.shape[1], 1)
-        self.model = CNN.create_model(self)
-        self.model.fit(x_train, y_train, validation_data=(x_valid, y_valid), epochs=self.epochs,
-                       batch_size=self.batch_size)
-
-    def predict(self, x_test):
-        x_test = x_test.values.reshape(-1, x_test.shape[1], 1)
-        predict = self.model.predict(x_test)
-        if self.output_shape == 1:
-            return predict.reshape(-1, )
-        else:
-            return predict
-
-    def save(self, target_dir=''):
-        self.model.save(target_dir + "/cnn")
-
-    def load(self, target_dir=''):
-        model = models.load_model(target_dir + "/cnn")
-        self.model = model
-
-
-class Ensemble:
-    # https://www.kaggle.com/competitions/ubiquant-market-prediction结果表明, 多个神经网络的ensemble要比单个的效果更好
-    def __init__(self, model=None, weight=None, epochs=10):
-        """
-        :param model: None 或者已训练好的模型列表. 如果为None则在fit()函数中使用默认参数训练一个CNN模型和一个Bi-LSTM模型
-        :param weight: None 或者各模型的权重
-        :param epochs: 10, 需要自行训练模型时的epochs
-        """
-        self.models = model
-        self.weight = weight
-        self.epochs = epochs
-
-    def create_model(self, x_input):
-        if self.models is None:
-            self.models = []
-            self.models.append(CNN(epochs=self.epochs))
-            self.models.append((Bi_LSTM(epochs=self.epochs)))
-            self.models[0].create_model()
-            self.models[1].create_model(x_input)
-            w = 1 / len(self.models)
-            self.weight = [w for _ in range(len(self.models))] if self.weight is None else self.weight
-
-    def fit(self, X_train, y_train, X_valid, y_valid):
-        self.create_model(X_train)
-        for i in range(len(self.models)):
-            self.models[i].fit(X_train, y_train, X_valid, y_valid)
-
-    def predict(self, X_test):
-        predict = {}
-        for i in range(len(self.models)):
-            pred = self.models[i].predict(X_test)
-            predict[str(i)] = pred * self.weight[i]
-        return sum(predict[k] for k in predict.keys())
-
-    def save(self, target_dir=''):
-        for i in range(len(self.models)):
-            self.models[i].save(target_dir + "/model" + str(i))
-
-    def load(self, n_models, target_dir=''):
-        for i in range(n_models):
-            model = models.load_model(target_dir + "/model" + str(i))
-            self.models.append(model)
+    def save(self, path: str = "model.pth"):
+        torch.save(self.state_dict(), path)

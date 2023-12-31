@@ -146,21 +146,6 @@ def plot_pca_variance(pca):
     return axs
 
 
-def calc_multicollinearity(X: pd.DataFrame, show: bool = False):
-    """
-        反映多重共线性严重程度
-    """
-    corr = X.corr()
-    if show:
-        print(corr)
-    corr = abs(corr)
-    v = 0  # 此处是借用了vif的思想
-    for c in corr.columns:
-        if corr[c].mean() >= 0.6:
-            v += 1
-    return v / len(X.columns)
-
-
 def make_mi_scores(X: pd.DataFrame | pd.Series, y: pd.DataFrame | pd.Series) -> pd.Series:
     """
     :param X: pd.DataFrame, 输入的特征
@@ -201,37 +186,17 @@ def show_dist(X: pd.Series | pd.DataFrame) -> None:
     plt.show()
 
 
-def feature_selector(df: pd.DataFrame, score: pd.Series, value: float = 0, verbose: int = 0) -> pd.DataFrame:
-    """
-    :param df: pd.DataFrame, 输入的数据(特征)
-    :param score: pd.DataFrame, 特征得分，index为特征名，value为得分
-    :param value: int or float, 筛选特征的临界值，默认为0
-    :param verbose: bool, 是否输出被筛除的列
-    :return: 被筛后的特征
-    """
-    col = score[score <= value].index
-    df = df.drop(col, axis=1)
-    if verbose == 1:
-        for c in col:
-            print(str(c) + ' will be dropped')
-    return df
-
-
 ####################################################
 # 数据清洗
 ####################################################
 def align(x: pd.Series | pd.DataFrame, y: pd.Series | pd.DataFrame) \
         -> tuple[pd.DataFrame | pd.Series, pd.DataFrame | pd.Series]:
     """
-    align x's index with y
-    :param x: pd.DataFrame or pd.Series
-    :param y: pd.DataFrame or pd.Series
-    :return: pd.DataFrame(or pd.Series), pd.DataFrame(or pd.Series)
+    使x和y有相同的索引
     """
-    if len(x) > len(y):
-        x = x[x.index.isin(y.index)]
-    elif len(y) > len(x):
-        y = y[y.index.isin(x.index)]
+    x = x[x.index.isin(y.index)]
+    y = y[y.index.isin(x.index)]
+    x = x[x.index.isin(y.index)]
     return x, y
 
 
@@ -247,37 +212,17 @@ def clean(X: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
     return X
 
 
-def calc_0(X: pd.DataFrame | pd.Series, method: str = "precise", val: float = 0) -> float:  # 计算0或者其它数值的占比
+def down_sample(data: pd.Series, threshold: float = 0.5) -> pd.Series:
     """
-    :param X: pd.DataFrame, 输入的数据
-    :param method: 'precise' or 'range'，需要计算占比的是数值还是某个范围
-    :param val: int or float, 需要计算占比的具体数值
-    :return: float, 比例
-    """
-    s = 0
-    if method == "precise":
-        for i in range(0, len(X)):
-            if X[i] == val:
-                s += 1
-    elif method == "range":
-        for i in range(0, len(X)):
-            if -val <= X[i] <= val:
-                s += 1
-    return s / len(X)
+    对于一个具有多重索引的pd.Series, 去除其unique_value占比低于threshold的天
 
-
-def down_sample(X: pd.DataFrame, col: str, val: int = 0, n: float = 0.35) -> pd.DataFrame:
-    """
-    :param X: pd.DataFrame, 输入的数据
-    :param col: str, 需要降采样的列名
-    :param val: 需要降采样的样本值
-    :param n: float, 降采样比例, 0~1
+    :param data: pd.DataFrame, 输入的数据
+    :param threshold: str, 需要降采样的列名
     :return: pd.DataFrame, 降采样后的数据集
     """
-    X_0 = X[abs(X[col]) == val]
-    n_drop = int(n * len(X_0))
-    choice = np.random.choice(X_0.index, n_drop, replace=False)
-    return X.drop(choice, axis=0)
+    unique_val_pct: pd.Series = data.groupby(level=0).apply(lambda x: len(x.unique()) / len(x))
+    unexpected_days = unique_val_pct[unique_val_pct < threshold].index
+    return data[~data.index.get_level_values(0).isin(unexpected_days)]
 
 
 def bootstrap(X: pd.DataFrame, col: str, val: int = 0, windows: int = 5, n: float = 0.35) -> pd.DataFrame:
@@ -406,16 +351,19 @@ def split_data_by_date(data: pd.DataFrame | pd.Series, kwargs: dict) -> \
 ####################################################
 # 自动处理器
 ####################################################
-def process_data(data: pd.DataFrame | pd.Series, norm: str = "z", decay: bool = False) -> pd.DataFrame | pd.Series:
+def process_data(data: pd.DataFrame | pd.Series, norm: str = "z", decay: int = 0,
+                 threshold: float = 0.5) -> pd.DataFrame | pd.Series:
     """
     inf_mask -> process_nan -> mad_winsorize -> (decay) -> normalize
     """
     if isinstance(data, pd.Series):
-        print("original data:")
-        single_factor_ana(data)
-    data = mad_winsor(ts_ffill(inf_mask(data)).dropna())
-    if decay:
-        data = ts_decay(data, 5).dropna()
+        data = down_sample(data, threshold)
+        data = inf_mask(data).dropna()
+    else:
+        data = ts_ffill(inf_mask(data)).dropna()
+    data = mad_winsor(data)
+    if decay > 1:
+        data = mean(data, ts_decay(data, decay)).dropna()  # 很弱的decay, 不希望给过去太大的权重
     if norm == "z":
         data = cs_zscore(data)
     elif norm == "r":
@@ -424,21 +372,19 @@ def process_data(data: pd.DataFrame | pd.Series, norm: str = "z", decay: bool = 
         data = cs_scale(data)
     else:
         data = cs_rank(data)
-    if isinstance(data, pd.Series):
-        print("data processed:")
-        single_factor_ana(data)
     return data
 
 
 def auto_process(X: pd.DataFrame, y: str, norm: str = "z", split_params: dict = None,
-                 label_decay: bool = False) -> dict:
+                 label_decay: int = 0, unique_threshold: float = 0) -> dict:
     """
     :param X: pd.DataFrame，原始特征，包括了目标值
     :param y: str，目标值所在列的列名
     :param norm: str, 标准化方式, 可选'z'/'r'/'m'
     :param split_params: dict, 划分数据集的方法
     :param label_decay: 是否对目标值做decay以提高unique value的占比
-    :return: dict{X_train, X_test, y_train, y_test}
+    :param unique_threshold: 降采样的标准
+    :return:
     """
     if split_params is None:
         split_params = {
@@ -456,8 +402,14 @@ def auto_process(X: pd.DataFrame, y: str, norm: str = "z", split_params: dict = 
     print('X_mis=', X_mis)
 
     label = X.pop(y)
+
+    print("original label:")
+    single_factor_ana(label)
+
     feature = process_data(X, norm=norm)
-    label = process_data(label, norm=norm, decay=label_decay)
+    label = process_data(label, norm=norm, decay=label_decay, threshold=unique_threshold)
+    print("label processed:")
+    single_factor_ana(label)
     print("process dataset done")
 
     # 拆分数据集
@@ -470,25 +422,15 @@ def auto_process(X: pd.DataFrame, y: str, norm: str = "z", split_params: dict = 
 
     print("split data done", "\n")
 
-    # 降采样
-    X_0 = calc_0(y_train)
-    if X_0 > 0.5:
-        print('The types of label value are imbalance, apply down sample method', '\n')
-        X_train = down_sample(X_train, col=y)
-        print('down sample done', '\n')
-
-    X_train, y_train = align(X_train, y_train)
-    X_valid, y_valid = align(X_valid, y_valid)
-    X_test, y_test = align(X_test, y_test)
-    print('all works done', '\n')
     returns = {
-        "X_train": X_train,
+        "X_train": X_train.fillna(0),
         "y_train": y_train,
-        "X_valid": X_valid,
+        "X_valid": X_valid.fillna(0),
         "y_valid": y_valid,
-        "X_test": X_test,
+        "X_test": X_test.fillna(0),
         "y_test": y_test,
     }
+    print('all works done', '\n')
     return returns
 
 

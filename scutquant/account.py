@@ -55,7 +55,8 @@ class Account:
                     order["sell"][key] += order_offset["sell"][key]
         return order
 
-    def check_order(self, order: dict, price: dict, cost_rate: float = 0.0015, min_cost: float = 5) -> dict:
+    def check_order(self, order: dict, price: dict, cost_rate: float = 0.0015, min_cost: float = 5,
+                    risk: float = 0.95) -> dict:
         # 检查是否有足够的资金完成order, 如果不够则调整订单(sell不变, buy按比例减少)
         cash_inflow = 0.0
         cash_outflow = 0.0
@@ -74,12 +75,12 @@ class Account:
                 order["buy"].pop(code)
         cost = max(min_cost, (cash_inflow + cash_outflow) * cost_rate)
         cash_needed = cash_outflow - cash_inflow + cost
-        if cash_needed > self.cash:
+        if cash_needed > self.cash * risk:
             # c_n = buy + r(buy + sell) - sell > c, 令n * buy + r(n * buy + sell) - sell = c
             # 则n * buy * (1 + r) - (1 - r) * sell = c, 即 n * buy * (1 + r) = c + (1 - r)sell
             # n = (c + (1 - r)sell) / buy(1 + r)
-            ratio = (self.cash + (1 - cost_rate) * cash_inflow) / (cash_outflow * (1 + cost_rate))
-            order["buy"] = {k: int(v * ratio + 0.5) for k, v in order["buy"].items()}  # 这样虽然不是整手下单, 但只要在1手以上都没问题
+            ratio = (self.cash * risk + (1 - cost_rate) * cash_inflow) / (cash_outflow * (1 + cost_rate))
+            order["buy"] = {k: int(((v * ratio / 100) + 0.5) * 100) for k, v in order["buy"].items()}
         return order
 
     def update_price(self, price: dict):  # 更新市场价格
@@ -164,17 +165,21 @@ class Account:
             offset_order = None
         return offset_order
 
-    def risk_control(self, risk_degree: float, cost_rate: float = 0.0005, min_cost: float = 5):
-        # 控制风险, 当风险度超过计划风险度时, 按比例减少持仓
-        # 令risk回到risk_degree: 各资产持仓量为向量x, 各资产市场价格为向量p, 总市值为v, 风险度 r = p*x/v. 即px = rv.
-        # 求出减持比例b, 使得r = p*(1-b)x/v = risk_degree. 即1-b = risk_degree * v / (p * x), b = 1- (risk_degree * v) / (p*x)
-        # 代入px=rv，得b = 1 - (risk_degree * v) / (r * v) = 1 - risk_degree / r
+    def risk_control(self, risk_degree: float = 0.95, cost_rate: float = 0.0005, min_cost: float = 5):
+        """
+        控制风险, 当风险度超过计划风险度时, 按比例减少持仓
+        令risk回到risk_degree: 各资产持仓量为向量x, 各资产市场价格为向量p, 总市值为v, 风险度 r = p*x/v. 即px = rv.
+        求出减持比例b, 使得r = p*(1-b)x/v = risk_degree. 即1-b = risk_degree * v / (p * x), b = 1- (risk_degree * v) / (p*x)
+        代入px=rv，得b = 1 - (risk_degree * v) / (r * v) = 1 - risk_degree / r
+        """
         self.risk = 1 - self.cash / self.value
-        self.risk_curve.append(self.risk)
         if self.risk > risk_degree:
             b = 1 - risk_degree / self.risk
             sell_order = deepcopy(self.position)
+            sell_order = {k: v for k, v in sell_order.items() if v > 0}
             for code in sell_order.keys():
                 sell_order[code] *= b
                 sell_order[code] = int(sell_order[code] / 100 + 0.5) * 100  # 以手为单位减持
             self.sell(sell_order, cost_rate, min_cost)
+            self.risk = 1 - self.cash / self.value
+        self.risk_curve.append(self.risk)

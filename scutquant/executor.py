@@ -138,7 +138,7 @@ class Executor:
 
                 if self.s.auto_offset:
                     order = self.user_account.adjust_order(order=order, freq=self.s.offset_freq)
-                order = self.user_account.check_order(order, current_price)
+                order = self.user_account.check_order(order, current_price, risk=self.s.risk_degree)
                 # print(trade)
                 # trade = True
                 if verbose == 1:

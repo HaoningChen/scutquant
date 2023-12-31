@@ -779,12 +779,12 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     for c in delta.columns:
         delta[c] /= price
 
-    r2 = REGRESSION(data["open"], data["close"], windows, rettype=4).get_factor_value(normalize=normalize,
-                                                                                      handle_nan=fill)
+    r2 = REGRESSION(cs_rank(data["volume"]), cs_rank(data["close"]), windows, rettype=4).get_factor_value(
+        normalize=normalize, handle_nan=fill)
     r2.columns = ["rsqr" + str(w) for w in windows]
 
-    resi = REGRESSION(data["open"], data["close"], windows, rettype=0).get_factor_value(normalize=normalize,
-                                                                                        handle_nan=fill)
+    resi = REGRESSION(cs_rank(data["volume"]), cs_rank(data["close"]), windows, rettype=0).get_factor_value(
+        normalize=normalize, handle_nan=fill)
     resi.columns = ["resi" + str(w) for w in windows]
     for c in resi.columns:
         resi[c] /= price
