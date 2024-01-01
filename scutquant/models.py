@@ -25,28 +25,37 @@ def get_daily_inter(data: Series | DataFrame, shuffle=False):
     return daily_index, daily_count
 
 
-def from_pandas_to_list(x, for_cnn: bool = False):
+def from_pandas_to_list(x, for_cnn: bool = False, for_rnn: bool = False):
     if isinstance(x, DataFrame) or isinstance(x, Series):
         dataset = []
         daily_index, daily_count = get_daily_inter(x)
         for index, count in zip(daily_index, daily_count):
             batch = slice(index, index + count)
             data_slice = x.iloc[batch]
-            value = data_slice.values.reshape(-1, data_slice.shape[1], 1) if for_cnn else data_slice.values
+            if for_cnn or for_rnn:
+                value = data_slice.values.reshape(-1, data_slice.shape[1], 1)  # instrument * feat * 1
+                # print(value.shape)
+            else:
+                value = data_slice.values  # instrument * feat
             if value.ndim == 1:
                 dataset.append(torch.from_numpy(np.squeeze(value)).to(torch.float32).view(-1, 1))
             else:
-                dataset.append(torch.from_numpy(value).to(torch.float32))
+                if for_rnn:
+                    dataset.append(torch.from_numpy(value).permute(0, 2, 1).to(torch.float32))  # instrument * 1 * feat
+                else:
+                    dataset.append(torch.from_numpy(value).to(torch.float32))
+        # print(dataset[-1].shape)
         return dataset
     else:
         return x
 
 
-def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, for_cnn: bool = False):
+def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, for_cnn: bool = False,
+                   for_rnn: bool = False):
     """
     将DataFrame或Series拆成list, 并根据模型类型对数据的shape进行调整
     """
-    x_train, x_valid = from_pandas_to_list(x_train, for_cnn), from_pandas_to_list(x_valid, for_cnn)
+    x_train, x_valid = from_pandas_to_list(x_train, for_cnn, for_rnn), from_pandas_to_list(x_valid, for_cnn, for_rnn)
     y_train, y_valid = from_pandas_to_list(y_train), from_pandas_to_list(y_valid)
     if z_train is not None:
         z_train = from_pandas_to_list(z_train)
@@ -97,18 +106,10 @@ class MSEPlus(torch.nn.Module):
         return mse_loss * (1 + 0.05 * torch.abs(ic_loss))
 
 
-class MLP(torch.nn.Module):
-    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int, epochs: int = 10, loss: str = "mse_loss",
-                 lr: float = 1e-3, weight_decay: float = 5e-4, dropout: float = 0.3, model=None, *args, **kwargs):
+class Model(torch.nn.Module):
+    def __init__(self, epochs: int = 10, loss: str = "mse_loss", lr: float = 1e-3, weight_decay: float = 5e-4,
+                 dropout: float = 0.2, model=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.input_shape = input_shape
-        self.hidden_shape = hidden_shape
-        self.output_shape = output_shape
-        self.feature_filter = torch.nn.Linear(in_features=self.input_shape, out_features=self.hidden_shape, bias=False)
-        self.hidden_layer = torch.nn.Linear(in_features=self.hidden_shape, out_features=self.hidden_shape)
-        self.out_layer = torch.nn.Linear(in_features=self.hidden_shape, out_features=self.output_shape)
-        self.jump_layer = torch.nn.Linear(in_features=self.input_shape, out_features=self.hidden_shape)
-        self.bn = torch.nn.BatchNorm1d(self.hidden_shape)
         self.epochs = epochs
         self.loss = loss if loss != "special" else MSEPlus()
         self.lr = lr
@@ -116,27 +117,14 @@ class MLP(torch.nn.Module):
         self.dropout = dropout
         self.model = model
         self.optimizer = None
-
-    def init_model(self):
-        self.model = MLP(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
-                         output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
-                         weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
-
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        self.for_cnn = False
+        self.for_rnn = False
 
     def forward(self, x):
-        x1 = f.relu(self.jump_layer(x))
-        x1 = f.dropout(x1, p=self.dropout, training=self.training)
+        pass
 
-        x = self.feature_filter(x)
-        x = f.relu(x)
-        x = f.dropout(x, p=self.dropout, training=self.training)
-
-        x = self.hidden_layer(x)
-        x = f.relu(x)
-        x = f.dropout(x, p=self.dropout, training=self.training)
-
-        return self.out_layer(self.bn(x + x1))
+    def init_model(self):
+        pass
 
     def get_loss(self, x, y, z=None):
         self.model.train()
@@ -170,7 +158,8 @@ class MLP(torch.nn.Module):
             self.init_model()
 
         x_train, y_train, x_valid, y_valid, z_train, z_valid = transform_data(x_train, y_train, x_valid, y_valid,
-                                                                              z_train, z_valid)
+                                                                              z_train, z_valid, for_cnn=self.for_cnn,
+                                                                              for_rnn=self.for_rnn)
 
         for epoch in range(1, self.epochs + 1):
             total_loss_train = 0
@@ -186,9 +175,9 @@ class MLP(torch.nn.Module):
             print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
                   total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
 
-    def predict_pandas(self, x: DataFrame, for_cnn: bool = False) -> Series:
+    def predict_pandas(self, x: DataFrame) -> Series:
         index = x.index
-        x = from_pandas_to_list(x, for_cnn)
+        x = from_pandas_to_list(x, self.for_cnn, self.for_rnn)
         result = []
         for batch in x:
             result.append(Series(self.predict_(batch).view(-1, )))
@@ -198,3 +187,106 @@ class MLP(torch.nn.Module):
 
     def save(self, path: str = "model.pth"):
         torch.save(self.state_dict(), path)
+
+
+class MLP(Model):
+    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int = 1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_shape = input_shape
+        self.hidden_shape = hidden_shape
+        self.output_shape = output_shape
+
+        self.feature_filter = torch.nn.Linear(in_features=self.input_shape, out_features=self.hidden_shape, bias=False)
+        self.hidden_layer = torch.nn.Linear(in_features=self.hidden_shape, out_features=self.hidden_shape)
+        self.out_layer = torch.nn.Linear(in_features=self.hidden_shape, out_features=self.output_shape)
+        self.jump_layer = torch.nn.Linear(in_features=self.input_shape, out_features=self.hidden_shape)
+        self.bn = torch.nn.BatchNorm1d(self.hidden_shape)
+
+        self.optimizer = None
+
+    def init_model(self):
+        self.model = MLP(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
+                         output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
+                         weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+    def forward(self, x):
+        x1 = f.relu(self.jump_layer(x))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        x = f.relu(self.feature_filter(x))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        x = f.relu(self.hidden_layer(x))
+
+        return self.out_layer(self.bn(x + x1))
+
+
+class CNN(Model):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, output_shape: int = 1, *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
+        self.output_shape = output_shape
+
+        self.for_cnn = True
+
+        self.input_conv = torch.nn.Conv1d(self.input_channels, self.hidden_channels, kernel_size=1)
+        self.hidden_conv = torch.nn.Conv1d(self.hidden_channels, self.output_channels, kernel_size=1)
+
+        self.bn = torch.nn.BatchNorm1d(self.hidden_channels)
+        self.bn_1 = torch.nn.BatchNorm1d(self.output_channels)
+        self.flatten = torch.nn.Flatten()
+
+        self.out_layer = torch.nn.Linear(self.output_channels, self.output_shape)
+
+    def forward(self, x):
+        x = f.relu(self.input_conv(x))
+        x = self.bn(x)
+
+        x = f.relu(self.hidden_conv(x))
+        x = self.bn_1(x)
+        x = self.flatten(x)
+
+        x = self.out_layer(x)
+        return x
+
+    def init_model(self):
+        self.model = CNN(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
+                         output_channels=self.output_channels, output_shape=self.output_shape, epochs=self.epochs,
+                         loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
+                         dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+
+class GRU(Model):
+    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int = 1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        """
+        input shape: N, L, Hin, 即batch_size(=daily instrument), datetime(=1), n_features
+        """
+        self.input_shape = input_shape
+        self.hidden_shape = hidden_shape
+        self.output_shape = output_shape
+
+        self.gru = torch.nn.GRU(self.input_shape, self.hidden_shape, batch_first=True)
+        self.linear = torch.nn.Linear(self.hidden_shape, self.output_shape)
+
+        self.for_rnn = True
+
+    def forward(self, x):
+        x, _ = self.gru(x)
+        x = f.relu(x[:, -1, :])
+        x = self.linear(x)
+        return x
+
+    def init_model(self):
+        self.model = GRU(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
+                         output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
+                         weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
