@@ -3,6 +3,7 @@ from torch import Tensor
 import torch.nn.functional as f
 import numpy as np
 from pandas import DataFrame, Series, concat
+from torch_geometric.nn.conv import SAGEConv
 
 """
 目前models模块使用pytorch实现, 这样可以更好地接入图神经网络模块
@@ -64,6 +65,23 @@ def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=Non
     return x_train, y_train, x_valid, y_valid, z_train, z_valid
 
 
+def from_series_to_edge(x: Series, threshold: float = 0.5, layout: str = "csr") -> list:
+    corr_matrix = x.unstack().corr().fillna(0)
+    corr_matrix[abs(corr_matrix) < threshold] = 0
+    inst = x.groupby(level=0).apply(lambda a: a.index.get_level_values(1).unique().values.tolist()).values
+    mat_list = []
+    for d in range(len(inst)):
+        in_col = corr_matrix.columns.isin(inst[d])
+        relation_ = corr_matrix[corr_matrix.columns[in_col]]
+        relation_ = relation_[relation_.index.isin(inst[d])]
+        tensor = torch.from_numpy(relation_.values).to(torch.float32)
+        if layout == "csr":
+            mat_list.append(tensor.to_sparse_csr())
+        else:
+            mat_list.append(tensor.to_sparse_coo())
+    return mat_list
+
+
 def calc_tensor_corr(x: Tensor, y: Tensor):
     if x.shape != y.shape:
         raise ValueError("The shapes of x and y must be the same.")
@@ -87,12 +105,12 @@ def split_dataset_by_index(dataset: list, train_index, test_index):
     return d_train, d_test
 
 
-class MSEPlus(torch.nn.Module):
+class style_mse(torch.nn.Module):
     def __init__(self):
         """
         当我们想控制预测值和某个变量的相关系数时
 
-        self.loss = MSEPlus()
+        self.loss = style_mse()
         self.loss((x, y, size))
         """
         super().__init__()
@@ -106,12 +124,27 @@ class MSEPlus(torch.nn.Module):
         return mse_loss * (1 + 0.05 * torch.abs(ic_loss))
 
 
+class robust_mse(torch.nn.Module):
+    def __init__(self, *args, **kwargs):
+        """
+        基于梯度设计一个新的范数, 让加上范数的mse更加鲁棒(受对抗训练的启发)
+
+        先生成对抗样本，然后计算置信度(adv), 然后调整beta
+
+        详情参考
+        https://arxiv.org/abs/1810.09936
+        和
+        https://github.com/yuxiangalvin/Stock-Move-Prediction-with-Adversarial-Training-Replicate/blob/main/src/codes/pred_lstm.py
+        """
+        super().__init__(*args, **kwargs)
+
+
 class Model(torch.nn.Module):
     def __init__(self, epochs: int = 10, loss: str = "mse_loss", lr: float = 1e-3, weight_decay: float = 5e-4,
                  dropout: float = 0.2, model=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.epochs = epochs
-        self.loss = loss if loss != "special" else MSEPlus()
+        self.loss = loss if loss != "special" else style_mse()
         self.lr = lr
         self.weight_decay = weight_decay
         self.dropout = dropout
@@ -120,16 +153,16 @@ class Model(torch.nn.Module):
         self.for_cnn = False
         self.for_rnn = False
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         pass
 
     def init_model(self):
         pass
 
-    def get_loss(self, x, y, z=None):
+    def get_loss(self, x, y, z=None, **kwargs):
         self.model.train()
         self.optimizer.zero_grad()
-        out = self.model(x)
+        out = self.model(x, **kwargs)
         if isinstance(self.loss, str):
             loss = eval("f." + self.loss + "(out, y)")
         else:
@@ -139,21 +172,21 @@ class Model(torch.nn.Module):
         return float(loss)
 
     @torch.no_grad()
-    def predict_(self, x):
+    def predict_(self, x, **kwargs):
         self.model.eval()
-        pred = self.model(x)
+        pred = self.model(x, **kwargs)
         return pred
 
     @torch.no_grad()
-    def test(self, x, y, z=None):
-        pred_ = self.predict_(x)
+    def test(self, x, y, z=None, **kwargs):
+        pred_ = self.predict_(x, **kwargs)
         if isinstance(self.loss, str):
             loss = eval("f." + self.loss + "(pred_, y)")
         else:
             loss = self.loss((pred_, y, z))
         return float(loss)
 
-    def fit(self, x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None):
+    def fit(self, x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, **kwargs):
         if self.model is None:
             self.init_model()
 
@@ -166,21 +199,23 @@ class Model(torch.nn.Module):
             total_loss_val = 0
             val_ic = 0
             for i in range(len(x_train)):
-                loss_train = self.get_loss(x=x_train[i], y=y_train[i], z=z_train[i] if z_train is not None else None)
+                loss_train = self.get_loss(x=x_train[i], y=y_train[i], z=z_train[i] if z_train is not None else None,
+                                           **kwargs)
                 total_loss_train += loss_train
             for i in range(len(x_valid)):
-                loss_val = self.test(x=x_valid[i], y=y_valid[i], z=z_valid[i] if z_valid is not None else None)
+                loss_val = self.test(x=x_valid[i], y=y_valid[i], z=z_valid[i] if z_valid is not None else None,
+                                     **kwargs)
                 total_loss_val += loss_val
                 val_ic += float(calc_tensor_corr(self.predict_(x_valid[i]), y_valid[i]))
             print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
                   total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
 
-    def predict_pandas(self, x: DataFrame) -> Series:
+    def predict_pandas(self, x: DataFrame, **kwargs) -> Series:
         index = x.index
         x = from_pandas_to_list(x, self.for_cnn, self.for_rnn)
         result = []
         for batch in x:
-            result.append(Series(self.predict_(batch).view(-1, )))
+            result.append(Series(self.predict_(batch, **kwargs).view(-1, )))
         series = concat(result, axis=0)
         series.index = index
         return series
@@ -211,7 +246,7 @@ class MLP(Model):
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x1 = f.relu(self.jump_layer(x))
         x = f.dropout(x, p=self.dropout, training=self.training)
 
@@ -243,7 +278,7 @@ class CNN(Model):
 
         self.out_layer = torch.nn.Linear(self.output_channels, self.output_shape)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = f.relu(self.input_conv(x))
         x = self.bn(x)
 
@@ -278,7 +313,7 @@ class GRU(Model):
 
         self.for_rnn = True
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x, _ = self.gru(x)
         x = f.relu(x[:, -1, :])
         x = self.linear(x)
@@ -288,5 +323,89 @@ class GRU(Model):
         self.model = GRU(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
                          output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
                          weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+
+class GNN(Model):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, output_shape: int = 1,
+                 aggr="mean", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
+        self.output_shape = output_shape
+        self.aggr = aggr
+
+    def forward(self, x, edge_index=None):
+        if edge_index is None:
+            edge_index = torch.from_numpy(np.ones(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_coo()
+        x = f.relu(self.input_conv(x, edge_index))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+        x = f.relu(self.output_conv(x, edge_index))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+        x = self.linear(x)
+        return x
+
+    def init_model(self):
+        pass
+
+    def fit(self, x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, edge_index: list = None):
+        if self.model is None:
+            self.init_model()
+
+        x_train, y_train, x_valid, y_valid, z_train, z_valid = transform_data(x_train, y_train, x_valid, y_valid,
+                                                                              z_train, z_valid, for_cnn=self.for_cnn,
+                                                                              for_rnn=self.for_rnn)
+
+        for epoch in range(1, self.epochs + 1):
+            total_loss_train = 0
+            total_loss_val = 0
+            val_ic = 0
+            for i in range(len(x_train)):
+                loss_train = self.get_loss(x=x_train[i], y=y_train[i], z=z_train[i] if z_train is not None else None,
+                                           edge_index=edge_index[i] if edge_index is not None else None)
+                total_loss_train += loss_train
+            for i in range(len(x_valid)):
+                loss_val = self.test(x=x_valid[i], y=y_valid[i], z=z_valid[i] if z_valid is not None else None,
+                                     edge_index=edge_index[i] if edge_index is not None else None)
+                total_loss_val += loss_val
+                val_ic += float(calc_tensor_corr(self.predict_(x_valid[i]), y_valid[i]))
+            print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
+                  total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
+
+    def predict_pandas(self, x: DataFrame, edge_index=None) -> Series:
+        index = x.index
+        x = from_pandas_to_list(x, self.for_cnn, self.for_rnn)
+        result = []
+        for i in range(len(x)):
+            result.append(
+                Series(self.predict_(x[i], edge_index=edge_index[i] if edge_index is not None else None).view(-1, )))
+        series = concat(result, axis=0)
+        series.index = index
+        return series
+
+
+class GraphSage(GNN):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, *args, **kwargs):
+        """
+        a simple example:
+
+        edges = models.from_series_to_edge(y_train)  # 主要多了这步, 需要自己构建edge_index
+        model = models.GraphSage(input_channels=50, hidden_channels=20, output_channels=10)
+        model.fit(x_train, y_train, x_valid, y_valid, edge_index=edges)
+        pred = model.predict_pandas(x_test, edge_index=edges)
+        """
+        super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
+
+        self.input_conv = SAGEConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
+        self.output_conv = SAGEConv(in_channels=self.hidden_channels, out_channels=self.output_channels, aggr=self.aggr)
+        self.linear = torch.nn.Linear(self.output_channels, self.output_shape)
+
+    def init_model(self):
+        self.model = GraphSage(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
+                               output_channels=self.output_channels, output_shape=self.output_shape, aggr=self.aggr,
+                               epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
+                               dropout=self.dropout).to(torch.float32)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
