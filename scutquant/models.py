@@ -48,15 +48,19 @@ def from_pandas_to_list(x, for_cnn: bool = False):
         return x
 
 
-def from_pandas_to_rnn(x: DataFrame | Series):
+def from_pandas_to_rnn(x: DataFrame | Series, fillna: bool = False):
     if isinstance(x, Series):
         n_feat = 1
     else:
         n_feat = len(x.columns)
-    x = x.unstack(level=0).fillna(0)
-    x_3d = x.values.reshape(x.shape[0], n_feat, -1)  # inst * feat * date
-    x = torch.from_numpy(x_3d).to(torch.float32).permute(0, 2, 1)  # Tensor with shape inst * date * feat
-    return x
+
+    x_unstack = x.unstack(level=0)
+    if fillna:
+        x_unstack = x_unstack.fillna(0)
+
+    x_3d = x_unstack.values.reshape(x_unstack.shape[0], n_feat, -1)  # inst * feat * date
+    tensor = torch.from_numpy(x_3d).to(torch.float32).permute(0, 2, 1)  # Tensor with shape inst * date * feat
+    return tensor
 
 
 def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, for_cnn: bool = False,
@@ -64,23 +68,29 @@ def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=Non
     """
     将DataFrame或Series拆成list, 并根据模型类型对数据的shape进行调整
     """
-    if not for_rnn:
-        x_train, x_valid = from_pandas_to_list(x_train, for_cnn), from_pandas_to_list(x_valid, for_cnn)
-        y_train, y_valid = from_pandas_to_list(y_train), from_pandas_to_list(y_valid)
-    else:
-        x_train, x_valid = from_pandas_to_rnn(x_train), from_pandas_to_rnn(x_valid)
-        y_train, y_valid = from_pandas_to_rnn(y_train), from_pandas_to_rnn(y_valid)
-    if z_train is not None:
-        z_train = from_pandas_to_list(z_train)
-    if z_valid is not None:
-        z_valid = from_pandas_to_list(z_valid)
+    if isinstance(x_train, DataFrame) or isinstance(x_train, Series):
+        if not for_rnn:
+            x_train, x_valid = from_pandas_to_list(x_train, for_cnn), from_pandas_to_list(x_valid, for_cnn)
+            y_train, y_valid = from_pandas_to_list(y_train), from_pandas_to_list(y_valid)
+        else:
+            x_train, x_valid = from_pandas_to_rnn(x_train, fillna=True), from_pandas_to_rnn(x_valid, fillna=True)
+            y_train, y_valid = from_pandas_to_rnn(y_train), from_pandas_to_rnn(y_valid)
+        if z_train is not None:
+            z_train = from_pandas_to_list(z_train)
+        if z_valid is not None:
+            z_valid = from_pandas_to_list(z_valid)
     return x_train, y_train, x_valid, y_valid, z_train, z_valid
 
 
-def from_series_to_edge(x: Series, threshold: float = 0.5, layout: str = "csr") -> list:
+def from_series_to_edge(x: Series, threshold: float = 0.5, layout: str = "csr", shift: int = 0,
+                        select_instrument: bool = True) -> list:
     """
     计算x的相关系数矩阵. 如果相关性 < threshold则两个资产没有相关性, 值为0; 若>=threshold则有相关性, 值为1
+
+    默认返回inst_day * inst_day的矩阵, 压缩成csr格式; 如果关掉select_instrument则返回inst * inst的矩阵, inst包含所有instrument
     """
+    if shift > 0:
+        x = x.groupby(level=1).shift(shift).fillna(0)
     corr_matrix = x.unstack().corr().fillna(0)
     corr_matrix[abs(corr_matrix) < threshold] = 0
     corr_matrix[corr_matrix != 0] = 1
@@ -88,9 +98,12 @@ def from_series_to_edge(x: Series, threshold: float = 0.5, layout: str = "csr") 
     mat_list = []
 
     for d in range(len(inst)):
-        in_col = corr_matrix.columns.isin(inst[d])
-        relation_ = corr_matrix[corr_matrix.columns[in_col]]
-        relation_ = relation_[relation_.index.isin(inst[d])]
+        if select_instrument:
+            in_col = corr_matrix.columns.isin(inst[d])
+            relation_ = corr_matrix[corr_matrix.columns[in_col]]
+            relation_ = relation_[relation_.index.isin(inst[d])]
+        else:
+            relation_ = corr_matrix
         tensor = torch.from_numpy(relation_.values).to(torch.float32)
         if layout == "csr":
             mat_list.append(tensor.to_sparse_csr())
@@ -102,11 +115,12 @@ def from_series_to_edge(x: Series, threshold: float = 0.5, layout: str = "csr") 
 def calc_tensor_corr(x: Tensor, y: Tensor):
     if x.shape != y.shape:
         raise ValueError("The shapes of x and y must be the same.")
-    mean_x = torch.mean(x)
-    mean_y = torch.mean(y)
-    std_x = torch.std(x)
-    std_y = torch.std(y)
-    return torch.mean((x - mean_x) * (y - mean_y)) / (std_x * std_y)
+    mask = ~torch.isnan(y)
+    mean_x = torch.mean(x[mask])
+    mean_y = torch.mean(y[mask])
+    std_x = torch.std(x[mask])
+    std_y = torch.std(y[mask])
+    return torch.mean((x[mask] - mean_x) * (y[mask] - mean_y)) / (std_x * std_y)
 
 
 def split_dataset_by_index(dataset: list, train_index, test_index):
@@ -152,6 +166,8 @@ class robust_mse(torch.nn.Module):
         https://arxiv.org/abs/1810.09936
         和
         https://github.com/yuxiangalvin/Stock-Move-Prediction-with-Adversarial-Training-Replicate/blob/main/src/codes/pred_lstm.py
+        todo: 参考以下链接实现生成样本和计算损失
+        https://geek-docs.com/pytorch/pytorch-questions/169_pytorch_how_does_one_implement_adversarial_examples_in_pytorch.html
         """
         super().__init__(*args, **kwargs)
 
@@ -179,11 +195,12 @@ class Model(torch.nn.Module):
     def get_loss(self, x, y, z=None, **kwargs):
         self.model.train()
         self.optimizer.zero_grad()
+        mask = ~torch.isnan(y[:, 0])
         out = self.model(x, **kwargs)
         if isinstance(self.loss, str):
-            loss = eval("f." + self.loss + "(out, y)")
+            loss = eval("f." + self.loss + "(out[mask], y[mask])")
         else:
-            loss = self.loss((out, y, z))
+            loss = self.loss((out[mask], y[mask], z[mask]))
         loss.backward()
         self.optimizer.step()
         return float(loss)
@@ -196,11 +213,12 @@ class Model(torch.nn.Module):
 
     @torch.no_grad()
     def test(self, x, y, z=None, **kwargs):
+        mask = ~torch.isnan(y[:, 0])
         pred_ = self.predict_(x, **kwargs)
         if isinstance(self.loss, str):
-            loss = eval("f." + self.loss + "(pred_, y)")
+            loss = eval("f." + self.loss + "(pred_[mask], y[mask])")
         else:
-            loss = self.loss((pred_, y, z))
+            loss = self.loss((pred_[mask], y[mask], z))
         return float(loss)
 
     def fit(self, x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, **kwargs):
@@ -316,8 +334,8 @@ class CNN(Model):
 
 
 class GRU(Model):
-    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int = 1, timesteps: int = 10, *args,
-                 **kwargs):
+    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int = 1, n_layers: int = 1,
+                 timesteps: int = 10, *args, **kwargs):
         super().__init__(*args, **kwargs)
         """
         input shape: N, L, Hin, 即batch_size(=daily instrument), datetime(=timesteps), n_features
@@ -326,8 +344,10 @@ class GRU(Model):
         self.hidden_shape = hidden_shape
         self.output_shape = output_shape
         self.timesteps = timesteps
+        self.n_layers = n_layers
 
-        self.gru = torch.nn.GRU(self.input_shape, self.hidden_shape, batch_first=True, bias=False)
+        self.gru = torch.nn.GRU(self.input_shape, self.hidden_shape, batch_first=True, bias=False,
+                                num_layers=self.n_layers)
         self.bn = torch.nn.BatchNorm1d(self.hidden_shape)
         self.linear = torch.nn.Linear(self.hidden_shape, self.output_shape)
 
@@ -341,9 +361,9 @@ class GRU(Model):
         return x
 
     def init_model(self):
-        self.model = GRU(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
-                         output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
-                         weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
+        self.model = GRU(input_shape=self.input_shape, hidden_shape=self.hidden_shape, output_shape=self.output_shape,
+                         timesteps=self.timesteps, n_layers=self.n_layers, epochs=self.epochs, loss=self.loss,
+                         lr=self.lr, weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
@@ -359,10 +379,11 @@ class GRU(Model):
             val_ic = 0
             for i in range(0, x_train.shape[1] - self.timesteps):
                 loss_train = self.get_loss(x_train[:, i:i + self.timesteps, :], y_train[:, self.timesteps + i, :],
-                                           z_train[:, self.timesteps + i] if z_train is not None else None)
+                                           z_train[self.timesteps + i] if z_train is not None else None)
                 total_loss_train += loss_train
             for i in range(0, x_valid.shape[1] - self.timesteps):
-                loss_val = self.test(x_valid[:, i:i + self.timesteps, :], y_valid[:, self.timesteps + i, :])
+                loss_val = self.test(x_valid[:, i:i + self.timesteps, :], y_valid[:, self.timesteps + i, :],
+                                     z_valid[self.timesteps + i] if z_valid is not None else None)
                 total_loss_val += loss_val
                 val_ic += float(calc_tensor_corr(self.predict_(x_valid[:, i:i + self.timesteps, :]),
                                                  y_valid[:, self.timesteps + i, :]))
@@ -370,10 +391,10 @@ class GRU(Model):
                   total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
 
     def predict_pandas(self, x: DataFrame, **kwargs) -> Series:
-        x_tensor = from_pandas_to_rnn(x)
+        x_tensor = from_pandas_to_rnn(x, fillna=True)
         result = []
         for i in range(x_tensor.shape[1] - self.timesteps):
-            result.append(Series(self.predict_(x_tensor[:, i:i+self.timesteps, :], **kwargs).view(-1, )))
+            result.append(Series(self.predict_(x_tensor[:, i:i + self.timesteps, :], **kwargs).view(-1, )))
 
         days = x.index.get_level_values(0).unique()[-len(result):]
         instrument = x.index.get_level_values(1).unique().to_list()
@@ -398,19 +419,28 @@ class GNN(Model):
         self.output_shape = output_shape
         self.aggr = aggr
 
-        self.bn_1 = torch.nn.BatchNorm1d(self.hidden_channels)
-        self.bn_2 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_1 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_2 = torch.nn.BatchNorm1d(self.hidden_channels)
+        self.bn_3 = torch.nn.BatchNorm1d(self.output_channels)
 
     def forward(self, x, edge_index=None):
         if edge_index is None:
             edge_index = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_coo()
-        x = f.relu(self.input_conv(x, edge_index))
-        x = self.bn_1(x)
-        x = f.dropout(x, p=self.dropout, training=self.training)
-        x = f.relu(self.output_conv(x, edge_index))
-        x = self.bn_2(x)
-        # x = f.dropout(x, p=self.dropout, training=self.training)
-        x = self.linear(x)
+
+        x1 = f.relu(self.input_conv_1(x, edge_index))  # in_channels, out_channels
+        x1 = self.bn_1(x1)
+        # x1 = f.dropout(x1, p=self.dropout, training=self.training)
+
+        x2 = f.relu(self.input_conv_2(x, edge_index))  # in_channels, hidden_channels
+        x2 = self.bn_2(x2)
+
+        x3 = f.relu(self.linear_1(x))  # in_channels, hidden_channels
+        x3 = f.dropout(x2, p=self.dropout, training=self.training)
+
+        x3 = f.relu(self.linear_2(x3 + x2))  # hidden_channels, out_channels
+        x3 = self.bn_3(x3)
+
+        x = self.output_layer(x3 + x1)
         return x
 
     def init_model(self):
@@ -463,10 +493,15 @@ class GraphSage(GNN):
         pred = model.predict_pandas(x_test, edge_index=edges)
         """
         super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
 
-        self.input_conv = SAGEConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
-        self.output_conv = SAGEConv(in_channels=self.hidden_channels, out_channels=self.output_channels, aggr=self.aggr)
-        self.linear = torch.nn.Linear(self.output_channels, self.output_shape)
+        self.input_conv_1 = SAGEConv(in_channels=self.input_channels, out_channels=self.output_channels, aggr=self.aggr)
+        self.input_conv_2 = SAGEConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
+        self.linear_1 = torch.nn.Linear(self.input_channels, self.hidden_channels)
+        self.linear_2 = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
 
     def init_model(self):
         self.model = GraphSage(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
@@ -484,10 +519,15 @@ class GCN(GNN):
         https://github.com/pyg-team/pytorch_geometric/issues/61
         """
         super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
 
-        self.input_conv = GCNConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
-        self.output_conv = GCNConv(in_channels=self.hidden_channels, out_channels=self.output_channels, aggr=self.aggr)
-        self.linear = torch.nn.Linear(self.output_channels, self.output_shape)
+        self.input_conv_1 = GCNConv(in_channels=self.input_channels, out_channels=self.output_channels, aggr=self.aggr)
+        self.input_conv_2 = GCNConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
+        self.linear_1 = torch.nn.Linear(self.input_channels, self.hidden_channels)
+        self.linear_2 = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
 
     def init_model(self):
         self.model = GCN(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
@@ -501,14 +541,78 @@ class GCN(GNN):
 class GAT(GNN):
     def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, *args, **kwargs):
         super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
-        self.input_conv = GATConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
-        self.output_conv = GATConv(in_channels=self.hidden_channels, out_channels=self.output_channels, aggr=self.aggr)
-        self.linear = torch.nn.Linear(self.output_channels, self.output_shape)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
+
+        self.input_conv_1 = GATConv(in_channels=self.input_channels, out_channels=self.output_channels, aggr=self.aggr)
+        self.input_conv_2 = GATConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
+        self.linear_1 = torch.nn.Linear(self.input_channels, self.hidden_channels)
+        self.linear_2 = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
 
     def init_model(self):
         self.model = GAT(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
                          output_channels=self.output_channels, output_shape=self.output_shape, aggr=self.aggr,
                          epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
                          dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+
+class Hybrid(GNN):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, timestep: int = 1,
+                 n_gru: int = 2, *args, **kwargs):
+        super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
+        self.timestep = timestep
+        self.n_gru = n_gru
+
+        self.gru_1 = torch.nn.GRU(self.input_channels, self.input_channels, batch_first=True,
+                                    num_layers=self.n_gru)
+        self.gru_2 = torch.nn.GRU(self.input_channels, self.output_channels, batch_first=True,
+                                  num_layers=self.n_gru)
+        self.bn_1 = torch.nn.BatchNorm1d(self.input_channels)
+
+        self.gnn_1 = SAGEConv(self.input_channels, self.hidden_channels, aggr=self.aggr)
+        self.gnn_2 = SAGEConv(self.input_channels, self.output_channels, aggr=self.aggr)
+        self.bn_2 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_3 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_4 = torch.nn.BatchNorm1d(self.output_channels)
+        self.linear = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
+
+    def forward(self, x, edge_index=None):
+        # x: inst * feat
+        x_for_gru = x.reshape(x.shape[0], x.shape[1], 1).permute(0, 2, 1)
+        if edge_index is None:
+            edge_index = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_coo()
+
+        x1, _ = self.gru_1(x_for_gru)
+        x1 = f.relu(x1[:, -1, :])
+        x1 = self.bn_1(x1)
+
+        x2 = self.gnn_1(x + x1, edge_index)  # gnn with gru's output as input
+        x2 = f.relu(x2)
+        x2 = self.linear(x2)
+        x2 = f.relu(x2)
+        x2 = self.bn_2(x2)
+
+        x3 = self.gnn_2(x, edge_index)  # pure gnn
+        x3 = f.relu(x3)
+        x3 = self.bn_3(x3)
+
+        x4, _ = self.gru_2(x_for_gru)
+        x4 = f.relu(x4[:, -1, :])
+        x4 = self.bn_4(x4)
+        return self.output_layer(x2 + x3 + x4)
+
+    def init_model(self):
+        self.model = Hybrid(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
+                            output_channels=self.output_channels, output_shape=self.output_shape, aggr=self.aggr,
+                            epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
+                            dropout=self.dropout, timestep=self.timestep, n_gru=self.n_gru).to(torch.float32)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
