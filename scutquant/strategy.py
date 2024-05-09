@@ -9,14 +9,18 @@ import pandas as pd
 
 
 def raw_prediction_to_signal(pred: pd.Series, total_cash: float, long_only: bool = False) -> pd.Series:
-    pred -= pred.groupby(level=0).mean()
-    pred_ = pred.copy()
-    abs_sum = abs(pred_).groupby(level=0).sum()
-    pred_ /= abs_sum
-    if long_only:
-        pred_[pred_ < 0] = 0
-        pred_ *= 2
-    return pred_ * total_cash
+    """
+    构造组合并乘可投资资金, 得到每只股票分配的资金
+    """
+    if len(pred) > 1:
+        if long_only:
+            pred -= pred.groupby(level=0).mean()
+        pred_ = pred.copy()
+        abs_sum = abs(pred_).groupby(level=0).sum()
+        pred_ /= abs_sum
+        return pred_ * total_cash
+    else:
+        return pred * total_cash
 
 
 def get_trade_volume(signal: pd.Series, price: pd.Series, volume: pd.Series, threshold: float = 0.05,
@@ -49,6 +53,9 @@ def get_vol(data: pd.DataFrame, volume: str = "volume") -> dict:
 
 
 def check_signal(order: dict) -> dict:
+    """
+    只返回value>0的键值对
+    """
     return {k: v for k, v in order.items() if v > 0}
 
 
@@ -89,44 +96,10 @@ class BaseStrategy:
         pass
 
 
-class TopKStrategy(BaseStrategy):
+class QlibTopKStrategy(BaseStrategy):
     """
-    受分组累计收益率启发(参考report模块的group_return_ana): 做多预测收益率最高的n个资产, 做空预测收益率最低的n个资产
-    这里的k是个百分数, 意为做多资产池中排前k%的资产, 做空排后k%的资产
-    """
-
-    def to_signal(self, data: pd.DataFrame, cash_available: float = None, **kwargs):
-        """
-        根据每天的预测值构造多空组合, 分别买入和卖出预测值的top K和bottom K, 而不管自身的position
-        """
-        n_k = int(len(data) * self.k + 0.5)
-        price = get_price(data, price="price")
-        data_ = data.copy().sort_values("predict", ascending=False)
-        data_buy = data_.head(n_k)
-        data_sell = data_.tail(n_k)
-
-        concat_data = pd.concat([data_buy, data_sell], axis=0)
-        concat_data["predict"] = raw_prediction_to_signal(concat_data["predict"], total_cash=cash_available,
-                                                          long_only=self.long_only)
-
-        concat_data["trade_volume"] = get_trade_volume(concat_data["predict"], concat_data["price"],
-                                                       concat_data["volume"], threshold=self.max_volume,
-                                                       unit=self.unit)
-
-        buy_dict = get_vol(concat_data[concat_data.index.isin(data_buy.index)], volume="trade_volume")
-        sell_dict = get_vol(concat_data[concat_data.index.isin(data_sell.index)], volume="trade_volume")
-
-        buy_dict, sell_dict = check_signal(buy_dict), check_signal(sell_dict)
-        order = {
-            "buy": buy_dict,
-            "sell": sell_dict
-        }
-        return order, price
-
-
-class LongStrategy(BaseStrategy):
-    """
-    每天持有top K组的多头, 清空不在当日signal里的仓位, 买入或调整在signal的股票
+    第一天持有整个valid broad top k 组股票, 以后每天卖出持仓的bottom k组股票, 买入持仓外对应数量的股票
+    即假设valid broad=n, 第一天买入n*k支股票, 以后每天卖出n*k^2支股票, 买入n*k^2支股票
     """
 
     def __init__(self, kwargs=None):
@@ -141,34 +114,43 @@ class LongStrategy(BaseStrategy):
             kwargs["risk_degree"] = 0.95
         if "max_volume" not in kwargs.keys():
             kwargs["max_volume"] = 0.05
+        if "equal_weight" not in kwargs.keys():
+            kwargs["equal_weight"] = True
 
         self.k = kwargs["k"]
-        self.auto_offset = False
-        self.offset_freq = 0
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
+        self.equal_weight = kwargs["equal_weight"]
         self.long_only = True
 
     def to_signal(self, data: pd.DataFrame, position: dict, cash_available: float = None):
         n_k = int(len(data) * self.k + 0.5)
+        valid_position = check_signal(position)
         price = get_price(data, price="price")
-        data_buy = data.copy().sort_values("predict", ascending=False).head(n_k)
-        data_buy["predict"] = raw_prediction_to_signal(data_buy["predict"], total_cash=cash_available,
-                                                       long_only=self.long_only)
-        # print(data_buy["predict"].groupby(level=0).sum())
+        if len(valid_position) == 0:  # 如果当前没有仓位, 买入valid broad top k组
+            data_buy = data.copy().sort_values("predict", ascending=False).head(n_k)  # 买入的股票
+            sell_dict = {}
+        else:
+            swap_k = int(len(valid_position) * self.k + 0.5)
+
+            data_in_position = data[data.index.get_level_values(1).isin(valid_position.keys())]
+            data_sell = data_in_position.copy().sort_values("predict", ascending=False).tail(swap_k)
+            sell_dict = {k: v for k, v in valid_position.items() if k in data_sell.index.get_level_values(1)}
+
+            data_not_in_position = data[~data.index.get_level_values(1).isin(valid_position.keys())]
+            data_buy = data_not_in_position.copy().sort_values("predict", ascending=False).head(swap_k)
+
+        if self.equal_weight:
+            data_buy["predict"] = cash_available / n_k  # 等权持有, 乘上总金额
+        else:
+            data_buy["predict"] = raw_prediction_to_signal(data_buy["predict"], total_cash=cash_available,
+                                                           long_only=True)  # 加权持有
         data_buy["trade_volume"] = get_trade_volume(data_buy["predict"], data_buy["price"], data_buy["volume"],
                                                     threshold=self.max_volume, unit=self.unit)
-        position = check_signal(position)
-        buy_dict = get_vol(data_buy, volume="trade_volume")
-        buy_dict1 = {k: v for k, v in buy_dict.items() if k not in position.keys()}
-        buy_dict2 = {k: v - position[k] for k, v in buy_dict.items() if k in position.keys() and v >= position[k]}
-        sell_dict1 = {k: position[k] - v for k, v in buy_dict.items() if k in position.keys() and v < position[k]}
-        sell_dict2 = {k: v for k, v in position.items() if k not in buy_dict.keys()}
+        buy_dict = check_signal(get_vol(data_buy, volume="trade_volume"))
+        sell_dict = check_signal(sell_dict)
 
-        buy_dict1.update(buy_dict2)
-        sell_dict1.update(sell_dict2)
-        buy_dict, sell_dict = check_signal(buy_dict1), check_signal(sell_dict1)
         order = {
             "buy": buy_dict,
             "sell": sell_dict

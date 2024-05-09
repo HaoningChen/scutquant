@@ -39,22 +39,6 @@ class Account:
         self.turnover = []
         self.trade_value = 0.0
 
-    def adjust_order(self, order: dict, freq: int) -> dict:
-        order_offset = self.auto_offset(freq)
-        if order_offset is not None:
-            for key in order_offset["buy"].keys():
-                if key not in order["buy"].keys():
-                    order["buy"][key] = order_offset["buy"][key]
-                else:
-                    order["buy"][key] += order_offset["buy"][key]
-
-            for key in order_offset["sell"].keys():
-                if key not in order["sell"].keys():
-                    order["sell"][key] = order_offset["sell"][key]
-                else:
-                    order["sell"][key] += order_offset["sell"][key]
-        return order
-
     def check_order(self, order: dict, price: dict, cost_rate: float = 0.0015, min_cost: float = 5,
                     risk: float = 0.95) -> dict:
         # 检查是否有足够的资金完成order, 如果不够则调整订单(sell不变, buy按比例减少)
@@ -143,27 +127,8 @@ class Account:
                 self.sell(order["sell"], cost_buy, min_cost)
                 self.buy(order["buy"], cost_sell, min_cost)
         self.trade_value = self.trade_value
-        self.turnover.append(self.trade_value / value_before_trade)
+        self.turnover.append(self.trade_value / value_before_trade / 2)  # 根据基金从业资格资料，应为(交易额 / 2) / 平均净资产
         self.update_value()
-
-    def auto_offset(self, freq: int):  # 自动平仓
-        """
-        example: 对某只股票的买入记录为[4, 1, 1, 2, 3], 假设买入后2个tick平仓, 则自动平仓应为[nan, nan, 4, 1, 1]
-
-        :param freq: 多少个tick后平仓, 例如收益率构建方式为close_-2 / close_-1 - 1, delta_t=1, 所以是1 tick后平仓
-        :return:
-        """
-        freq += 1
-        if len(self.buy_hist) >= freq:
-            # offset_buy = self.sell_hist[-freq]
-            offset_sell = self.buy_hist[-freq]
-            offset_order = {
-                "buy": {},  # 空头似乎不需要补仓
-                "sell": offset_sell
-            }
-        else:
-            offset_order = None
-        return offset_order
 
     def risk_control(self, risk_degree: float = 0.95, cost_rate: float = 0.0005, min_cost: float = 5):
         """

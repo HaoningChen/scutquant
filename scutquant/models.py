@@ -2,8 +2,9 @@ import torch
 from torch import Tensor
 import torch.nn.functional as f
 import numpy as np
-from pandas import DataFrame, Series, concat
-from torch_geometric.nn.conv import SAGEConv, GCNConv, GATConv
+from pandas import DataFrame, Series, concat, Grouper
+from torch_geometric.nn.conv import SAGEConv, GCNConv, GATConv, GINConv, ClusterGCNConv
+from torch_geometric.utils import add_self_loops
 
 """
 目前models模块使用pytorch实现, 这样可以更好地接入图神经网络模块
@@ -15,7 +16,7 @@ from torch_geometric.nn.conv import SAGEConv, GCNConv, GATConv
 """
 
 
-def get_daily_inter(data: Series | DataFrame, shuffle=False):
+def get_daily_inter(data: Series | DataFrame, shuffle: bool = False):
     daily_count = data.groupby(level=0).size().values
     daily_index = np.roll(np.cumsum(daily_count), 1)
     daily_index[0] = 0
@@ -112,6 +113,29 @@ def from_series_to_edge(x: Series, threshold: float = 0.5, layout: str = "csr", 
     return mat_list
 
 
+def make_rolling_corr_matrix(data: Series, freq: str = "M", threshold: float = 0.5) -> list[torch.Tensor]:
+    monthly_corr_matrices = {}
+    for month, group in data.groupby(Grouper(freq=freq, level=0)):
+        name = str(month)[:7]
+        returns_unstack = group.unstack()
+        corr_matrix = returns_unstack.corr().fillna(0)
+        corr_matrix[abs(corr_matrix) < threshold] = 0
+        # corr_matrix[corr_matrix != 0] = 1
+        corr_matrix = abs(corr_matrix)
+        monthly_corr_matrices[name] = corr_matrix
+    trade_days = data.index.get_level_values(0).unique()
+    inst = data.groupby(level=0).apply(lambda x: x.index.get_level_values(1).unique().values.tolist()).values
+    edges = []
+    for d in range(len(trade_days)):
+        mat_this_month = monthly_corr_matrices[str(trade_days[d])[0:7]]
+        today_inst = inst[d]
+        in_col = mat_this_month.columns.isin(today_inst)
+        mat = mat_this_month[mat_this_month.columns[in_col]]
+        mat = mat[mat.index.isin(today_inst)]
+        edges.append(torch.from_numpy(mat.values).to(torch.float32).to_sparse_csr())
+    return edges
+
+
 def calc_tensor_corr(x: Tensor, y: Tensor):
     if x.shape != y.shape:
         raise ValueError("The shapes of x and y must be the same.")
@@ -155,26 +179,9 @@ class style_mse(torch.nn.Module):
         return mse_loss * (1 + 0.05 * torch.abs(ic_loss))
 
 
-class robust_mse(torch.nn.Module):
-    def __init__(self, *args, **kwargs):
-        """
-        基于梯度设计一个新的范数, 让加上范数的mse更加鲁棒(受对抗训练的启发)
-
-        先生成对抗样本，然后计算置信度(adv), 然后调整beta
-
-        详情参考
-        https://arxiv.org/abs/1810.09936
-        和
-        https://github.com/yuxiangalvin/Stock-Move-Prediction-with-Adversarial-Training-Replicate/blob/main/src/codes/pred_lstm.py
-        todo: 参考以下链接实现生成样本和计算损失
-        https://geek-docs.com/pytorch/pytorch-questions/169_pytorch_how_does_one_implement_adversarial_examples_in_pytorch.html
-        """
-        super().__init__(*args, **kwargs)
-
-
 class Model(torch.nn.Module):
     def __init__(self, epochs: int = 10, loss: str = "mse_loss", lr: float = 1e-3, weight_decay: float = 5e-4,
-                 dropout: float = 0.2, model=None, *args, **kwargs):
+                 dropout: float = 0.2, model=None, adv: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.epochs = epochs
         self.loss = loss if loss != "style_mse" else style_mse()
@@ -185,6 +192,8 @@ class Model(torch.nn.Module):
         self.optimizer = None
         self.for_cnn = False
         self.for_rnn = False
+        self.adv = adv
+        self.output = None
 
     def forward(self, x, **kwargs):
         pass
@@ -194,14 +203,19 @@ class Model(torch.nn.Module):
 
     def get_loss(self, x, y, z=None, **kwargs):
         self.model.train()
+        if self.adv:
+            x.requires_grad = True
         self.optimizer.zero_grad()
         mask = ~torch.isnan(y[:, 0])
         out = self.model(x, **kwargs)
         if isinstance(self.loss, str):
             loss = eval("f." + self.loss + "(out[mask], y[mask])")
-        else:
+        elif isinstance(self.loss, style_mse):
             loss = self.loss((out[mask], y[mask], z[mask]))
+        else:
+            loss = self.loss(out[mask], y[mask])
         loss.backward()
+
         self.optimizer.step()
         return float(loss)
 
@@ -245,6 +259,33 @@ class Model(torch.nn.Module):
             print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
                   total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
 
+    def fit_kfold(self, x, y, z=None, k: int = 5, train_size=None, test_size=None, collect: bool = False, **kwargs):
+        x_list = from_pandas_to_list(x)
+        y_list = from_pandas_to_list(y)
+        z_list = from_pandas_to_list(z) if z is not None else None
+        from sklearn.model_selection import TimeSeriesSplit
+        if self.model is None:
+            self.init_model()
+        tscv = TimeSeriesSplit(n_splits=k, max_train_size=train_size, test_size=test_size)
+        if collect:
+            self.output = []
+        for fold, (train_index, valid_index) in enumerate(tscv.split(x_list)):
+            x_train, x_valid = split_dataset_by_index(x_list, train_index, valid_index)
+            y_train, y_valid = split_dataset_by_index(y_list, train_index, valid_index)
+            if z is not None:
+                z_train, z_valid = split_dataset_by_index(z_list, train_index, valid_index)
+            else:
+                z_train, z_valid = None, None
+            print("fold: ", fold)
+            self.fit(x_train, y_train, x_valid, y_valid, z_train=z_train, z_valid=z_valid, **kwargs)
+            if collect:
+                for i in range(len(x_valid)):
+                    self.output.append(Series(self.predict_(x_valid[i]).view(-1, ), **kwargs))
+        if collect:
+            self.output = concat(self.output, axis=0)
+            if isinstance(x, DataFrame):
+                self.output.index = x.index[-len(self.output):]
+
     def predict_pandas(self, x: DataFrame, **kwargs) -> Series:
         index = x.index
         x = from_pandas_to_list(x, self.for_cnn)
@@ -260,6 +301,39 @@ class Model(torch.nn.Module):
 
 
 class MLP(Model):
+    def __init__(self, input_shape: int, hidden_shape: int, output_shape: int = 1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_shape = input_shape
+        self.hidden_shape = hidden_shape
+        self.output_shape = output_shape
+
+        self.input_layer = torch.nn.Linear(self.input_shape, self.hidden_shape)
+        self.hid_layer_1 = torch.nn.Linear(self.hidden_shape, self.hidden_shape)
+        self.hid_layer_2 = torch.nn.Linear(self.hidden_shape, self.hidden_shape)
+        self.output_layer = torch.nn.Linear(self.hidden_shape, self.output_shape)
+
+        self.optimizer = None
+
+    def init_model(self):
+        self.model = MLP(input_shape=self.input_shape, hidden_shape=self.hidden_shape,
+                         output_shape=self.output_shape, epochs=self.epochs, loss=self.loss, lr=self.lr,
+                         weight_decay=self.weight_decay, dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+    def forward(self, x, **kwargs):
+        x = f.relu(self.input_layer(x))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        x = f.relu(self.hid_layer_1(x))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        x = f.relu(self.hid_layer_2(x))
+
+        return self.output_layer(x)
+
+
+class MLP_v1(Model):
     def __init__(self, input_shape: int, hidden_shape: int, output_shape: int = 1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_shape = input_shape
@@ -348,16 +422,16 @@ class GRU(Model):
 
         self.gru = torch.nn.GRU(self.input_shape, self.hidden_shape, batch_first=True, bias=False,
                                 num_layers=self.n_layers)
-        self.bn = torch.nn.BatchNorm1d(self.hidden_shape)
+        # self.bn = torch.nn.BatchNorm1d(self.hidden_shape)
         self.linear = torch.nn.Linear(self.hidden_shape, self.output_shape)
 
         self.for_rnn = True
 
     def forward(self, x, **kwargs):
         x, _ = self.gru(x)
-        x = f.relu(x[:, -1, :])
-        x = self.bn(x)
-        x = self.linear(x)
+        # x = f.relu(x[:, -1, :])
+        # x = self.bn(x)
+        x = self.linear(x[:, -1, :])
         return x
 
     def init_model(self):
@@ -411,34 +485,38 @@ class GRU(Model):
 
 class GNN(Model):
     def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, output_shape: int = 1,
-                 aggr="mean", *args, **kwargs):
+                 aggr="mean", add_self_loop: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.output_channels = output_channels
         self.output_shape = output_shape
         self.aggr = aggr
+        self.add_self_loops = add_self_loop
 
         self.bn_1 = torch.nn.BatchNorm1d(self.output_channels)
         self.bn_2 = torch.nn.BatchNorm1d(self.hidden_channels)
-        self.bn_3 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_3 = torch.nn.BatchNorm1d(self.hidden_channels)
+        self.bn = torch.nn.BatchNorm1d(self.output_channels)
 
     def forward(self, x, edge_index=None):
         if edge_index is None:
-            edge_index = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_coo()
+            edge_index = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_csr()
+        if self.add_self_loops:
+            edge_index = add_self_loops(edge_index)
 
-        x1 = f.relu(self.input_conv_1(x, edge_index))  # in_channels, out_channels
+        x1 = f.leaky_relu(self.input_conv_1(x, edge_index), negative_slope=0.3)  # in_channels, out_channels
         x1 = self.bn_1(x1)
-        # x1 = f.dropout(x1, p=self.dropout, training=self.training)
 
-        x2 = f.relu(self.input_conv_2(x, edge_index))  # in_channels, hidden_channels
+        x2 = f.leaky_relu(self.input_conv_2(x, edge_index), negative_slope=0.3)  # in_channels, hidden_channels
         x2 = self.bn_2(x2)
 
-        x3 = f.relu(self.linear_1(x))  # in_channels, hidden_channels
-        x3 = f.dropout(x2, p=self.dropout, training=self.training)
-
-        x3 = f.relu(self.linear_2(x3 + x2))  # hidden_channels, out_channels
+        x3 = f.leaky_relu(self.linear_1(x), negative_slope=0.3)  # in_channels, hidden_channels
         x3 = self.bn_3(x3)
+        # x3 = f.dropout(x3, p=self.dropout, training=self.training)
+
+        x3 = f.tanh(self.linear_2(x3 + x2))  # hidden_channels, out_channels
+        x3 = self.bn(x3)
 
         x = self.output_layer(x3 + x1)
         return x
@@ -466,9 +544,41 @@ class GNN(Model):
                 loss_val = self.test(x=x_valid[i], y=y_valid[i], z=z_valid[i] if z_valid is not None else None,
                                      edge_index=edge_valid[i] if edge_valid is not None else None)
                 total_loss_val += loss_val
-                val_ic += float(calc_tensor_corr(self.predict_(x_valid[i]), y_valid[i]))
+                val_ic += float(calc_tensor_corr(
+                    self.predict_(x_valid[i], edge_index=edge_valid[i] if edge_valid is not None else None),
+                    y_valid[i]))
             print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
                   total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
+
+    def fit_kfold(self, x, y, z=None, edge: list = None, k: int = 5, train_size=None, test_size=None,
+                  collect: bool = False):
+        x_list = from_pandas_to_list(x)
+        y_list = from_pandas_to_list(y)
+        z_list = from_pandas_to_list(z) if z is not None else None
+        from sklearn.model_selection import TimeSeriesSplit
+        if self.model is None:
+            self.init_model()
+        tscv = TimeSeriesSplit(n_splits=k, max_train_size=train_size, test_size=test_size)
+        if collect:
+            self.output = []
+        for fold, (train_index, valid_index) in enumerate(tscv.split(x_list)):
+            x_train, x_valid = split_dataset_by_index(x_list, train_index, valid_index)
+            y_train, y_valid = split_dataset_by_index(y_list, train_index, valid_index)
+            edge_train, edge_valid = split_dataset_by_index(edge, train_index, valid_index)
+            if z is not None:
+                z_train, z_valid = split_dataset_by_index(z_list, train_index, valid_index)
+            else:
+                z_train, z_valid = None, None
+            print("fold: ", fold)
+            self.fit(x_train, y_train, x_valid, y_valid, z_train=z_train, z_valid=z_valid, edge_train=edge_train,
+                     edge_valid=edge_valid)
+            if collect:
+                for i in range(len(x_valid)):
+                    self.output.append(Series(self.predict_(x_valid[i], edge_index=edge_valid[i]).view(-1, )))
+        if collect:
+            self.output = concat(self.output, axis=0)
+            if isinstance(x, DataFrame):
+                self.output.index = x.index[-len(self.output):]
 
     def predict_pandas(self, x: DataFrame, edge_index=None) -> Series:
         index = x.index
@@ -560,59 +670,186 @@ class GAT(GNN):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
 
-class Hybrid(GNN):
-    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, timestep: int = 1,
-                 n_gru: int = 2, *args, **kwargs):
+class GIN(GNN):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, *args, **kwargs):
         super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.output_channels = output_channels
-        self.timestep = timestep
-        self.n_gru = n_gru
 
-        self.gru_1 = torch.nn.GRU(self.input_channels, self.input_channels, batch_first=True,
-                                    num_layers=self.n_gru)
-        self.gru_2 = torch.nn.GRU(self.input_channels, self.output_channels, batch_first=True,
-                                  num_layers=self.n_gru)
-        self.bn_1 = torch.nn.BatchNorm1d(self.input_channels)
-
-        self.gnn_1 = SAGEConv(self.input_channels, self.hidden_channels, aggr=self.aggr)
-        self.gnn_2 = SAGEConv(self.input_channels, self.output_channels, aggr=self.aggr)
-        self.bn_2 = torch.nn.BatchNorm1d(self.output_channels)
-        self.bn_3 = torch.nn.BatchNorm1d(self.output_channels)
-        self.bn_4 = torch.nn.BatchNorm1d(self.output_channels)
-        self.linear = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.input_conv_1 = GINConv(
+            nn=torch.nn.Sequential(torch.nn.Linear(self.input_channels, 2 * self.input_channels),
+                                   torch.nn.BatchNorm1d(2 * self.input_channels),
+                                   torch.nn.ReLU(),
+                                   torch.nn.Linear(2 * self.input_channels, self.output_channels)), aggr=self.aggr)
+        self.input_conv_2 = GINConv(
+            nn=torch.nn.Sequential(torch.nn.Linear(self.input_channels, 2 * self.input_channels),
+                                   torch.nn.BatchNorm1d(2 * self.input_channels),
+                                   torch.nn.ReLU(),
+                                   torch.nn.Linear(2 * self.input_channels, self.hidden_channels)), aggr=self.aggr)
+        self.linear_1 = torch.nn.Linear(self.input_channels, self.hidden_channels)
+        self.linear_2 = torch.nn.Linear(self.hidden_channels, self.output_channels)
         self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
 
-    def forward(self, x, edge_index=None):
-        # x: inst * feat
-        x_for_gru = x.reshape(x.shape[0], x.shape[1], 1).permute(0, 2, 1)
-        if edge_index is None:
-            edge_index = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_coo()
-
-        x1, _ = self.gru_1(x_for_gru)
-        x1 = f.relu(x1[:, -1, :])
-        x1 = self.bn_1(x1)
-
-        x2 = self.gnn_1(x + x1, edge_index)  # gnn with gru's output as input
-        x2 = f.relu(x2)
-        x2 = self.linear(x2)
-        x2 = f.relu(x2)
-        x2 = self.bn_2(x2)
-
-        x3 = self.gnn_2(x, edge_index)  # pure gnn
-        x3 = f.relu(x3)
-        x3 = self.bn_3(x3)
-
-        x4, _ = self.gru_2(x_for_gru)
-        x4 = f.relu(x4[:, -1, :])
-        x4 = self.bn_4(x4)
-        return self.output_layer(x2 + x3 + x4)
-
     def init_model(self):
-        self.model = Hybrid(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
-                            output_channels=self.output_channels, output_shape=self.output_shape, aggr=self.aggr,
-                            epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
-                            dropout=self.dropout, timestep=self.timestep, n_gru=self.n_gru).to(torch.float32)
+        self.model = GIN(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
+                         output_channels=self.output_channels, output_shape=self.output_shape, aggr=self.aggr,
+                         epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
+                         dropout=self.dropout).to(torch.float32)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+
+class ClusterGCN(GNN):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, *args, **kwargs):
+        super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
+
+        self.input_conv_1 = ClusterGCNConv(in_channels=self.input_channels, out_channels=self.output_channels,
+                                           aggr=self.aggr)
+        self.input_conv_2 = ClusterGCNConv(in_channels=self.input_channels, out_channels=self.hidden_channels,
+                                           aggr=self.aggr)
+        self.linear_1 = torch.nn.Linear(self.input_channels, self.hidden_channels)
+        self.linear_2 = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
+
+    def init_model(self):
+        self.model = ClusterGCN(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
+                                output_channels=self.output_channels, output_shape=self.output_shape, aggr=self.aggr,
+                                epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
+                                dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+
+class MultiGraphSage(GNN):
+    def __init__(self, input_channels: int, hidden_channels: int, output_channels: int, *args, **kwargs):
+        super().__init__(input_channels, hidden_channels, output_channels, *args, **kwargs)
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.output_channels = output_channels
+
+        self.input_conv_1 = SAGEConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
+        self.input_conv_2 = SAGEConv(in_channels=self.input_channels, out_channels=self.hidden_channels, aggr=self.aggr)
+        self.input_conv_3 = SAGEConv(in_channels=self.input_channels, out_channels=self.output_channels, aggr=self.aggr)
+        self.input_conv_4 = SAGEConv(in_channels=self.input_channels, out_channels=self.output_channels, aggr=self.aggr)
+        self.linear_1 = torch.nn.Linear(self.input_channels, self.hidden_channels)
+        self.linear_2 = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.linear_3 = torch.nn.Linear(self.hidden_channels, self.output_channels)
+        self.output_layer = torch.nn.Linear(self.output_channels, self.output_shape)
+
+        self.bn_1 = torch.nn.BatchNorm1d(self.hidden_channels)
+        self.bn_2 = torch.nn.BatchNorm1d(self.hidden_channels)
+        self.bn_3 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_4 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_5 = torch.nn.BatchNorm1d(self.output_channels)
+        self.bn_6 = torch.nn.BatchNorm1d(self.output_channels)
+
+    def forward(self, x, edge_index_1=None, edge_index_2=None):
+        if edge_index_1 is None:
+            edge_index_1 = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_csr()
+        if edge_index_2 is None:
+            edge_index_2 = torch.from_numpy(np.zeros(shape=(x.shape[0], x.shape[0]))).to(torch.float32).to_sparse_csr()
+        if self.add_self_loops:
+            edge_index_1 = add_self_loops(edge_index_1)
+            edge_index_2 = add_self_loops(edge_index_2)
+        x_e1_1 = f.relu(self.input_conv_1(x, edge_index_1))
+        x_e1_1 = self.bn_1(x_e1_1)
+
+        x_e2_1 = f.relu(self.input_conv_1(x, edge_index_2))
+        x_e2_1 = self.bn_2(x_e2_1)
+
+        x_e1_2 = f.relu(self.input_conv_3(x, edge_index_1))
+        x_e1_2 = self.bn_3(x_e1_2)
+        x_e2_2 = f.relu(self.input_conv_4(x, edge_index_2))
+        x_e2_2 = self.bn_4(x_e2_2)
+
+        x = f.relu(self.linear_1(x))
+        x = f.dropout(x, p=self.dropout, training=self.training)
+
+        x1 = f.relu(self.linear_2(x + x_e1_1))
+        x1 = self.bn_5(x1)
+
+        x2 = f.relu(self.linear_3(x + x_e2_1))
+        x2 = self.bn_6(x2)
+        return self.output_layer(x1 + x2 + x_e1_2 + x_e2_2)
+
+    def init_model(self):
+        self.model = MultiGraphSage(input_channels=self.input_channels, hidden_channels=self.hidden_channels,
+                                    output_channels=self.output_channels, output_shape=self.output_shape,
+                                    aggr=self.aggr,
+                                    epochs=self.epochs, loss=self.loss, lr=self.lr, weight_decay=self.weight_decay,
+                                    dropout=self.dropout).to(torch.float32)
+
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
+    def fit(self, x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, edge1_train: list = None,
+            edge2_train: list = None, edge1_valid: list = None, edge2_valid: list = None):
+        if self.model is None:
+            self.init_model()
+
+        x_train, y_train, x_valid, y_valid, z_train, z_valid = transform_data(x_train, y_train, x_valid, y_valid,
+                                                                              z_train, z_valid, for_cnn=self.for_cnn,
+                                                                              for_rnn=self.for_rnn)
+        for epoch in range(1, self.epochs + 1):
+            total_loss_train = 0
+            total_loss_val = 0
+            val_ic = 0
+            for i in range(len(x_train)):
+                loss_train = self.get_loss(x=x_train[i], y=y_train[i], z=z_train[i] if z_train is not None else None,
+                                           edge_index_1=edge1_train[i], edge_index_2=edge2_train[i])
+                total_loss_train += loss_train
+            for i in range(len(x_valid)):
+                loss_val = self.test(x=x_valid[i], y=y_valid[i], z=z_valid[i] if z_valid is not None else None,
+                                     edge_index_1=edge1_valid[i], edge_index_2=edge2_valid[i])
+                total_loss_val += loss_val
+                val_ic += float(calc_tensor_corr(
+                    self.predict_(x_valid[i], edge_index_1=edge1_valid[i], edge_index_2=edge2_valid[i]),
+                    y_valid[i]))
+            print("Epoch:", epoch, "loss:", total_loss_train / len(x_train), "val_loss:",
+                  total_loss_val / len(x_valid), "val_ic:", val_ic / len(x_valid))
+
+    def fit_kfold(self, x, y, z=None, edge1: list = None, edge2: list = None, k: int = 5, train_size=None,
+                  test_size=None, collect: bool = False):
+        x_list = from_pandas_to_list(x)
+        y_list = from_pandas_to_list(y)
+        z_list = from_pandas_to_list(z) if z is not None else None
+        from sklearn.model_selection import TimeSeriesSplit
+        if self.model is None:
+            self.init_model()
+        tscv = TimeSeriesSplit(n_splits=k, max_train_size=train_size, test_size=test_size)
+        if collect:
+            self.output = []
+        for fold, (train_index, valid_index) in enumerate(tscv.split(x_list)):
+            x_train, x_valid = split_dataset_by_index(x_list, train_index, valid_index)
+            y_train, y_valid = split_dataset_by_index(y_list, train_index, valid_index)
+            edge1_train, edge1_valid = split_dataset_by_index(edge1, train_index, valid_index)
+            edge2_train, edge2_valid = split_dataset_by_index(edge2, train_index, valid_index)
+            if z is not None:
+                z_train, z_valid = split_dataset_by_index(z_list, train_index, valid_index)
+            else:
+                z_train, z_valid = None, None
+            print("fold: ", fold)
+            self.fit(x_train, y_train, x_valid, y_valid, z_train=z_train, z_valid=z_valid, edge1_train=edge1_train,
+                     edge1_valid=edge1_valid, edge2_train=edge2_train, edge2_valid=edge2_valid)
+            if collect:
+                for i in range(len(x_valid)):
+                    self.output.append(Series(self.predict_(x_valid[i], edge_index_1=edge1_valid[i],
+                                                            edge_index_2=edge2_valid[i]).view(-1, )))
+        if collect:
+            self.output = concat(self.output, axis=0)
+            if isinstance(x, DataFrame):
+                self.output.index = x.index[-len(self.output):]
+
+    def predict_pandas(self, x: DataFrame, edge_index_1=None, edge_index_2=None) -> Series:
+        index = x.index
+        x = from_pandas_to_list(x, self.for_cnn)
+        result = []
+        for i in range(len(x)):
+            result.append(
+                Series(self.predict_(x[i], edge_index_1=edge_index_1[i], edge_index_2=edge_index_2[i]).view(-1, )))
+        series = concat(result, axis=0)
+        series.index = index
+        return series

@@ -166,6 +166,13 @@ def report_all(user_account, benchmark, show_raw_value: bool = False, rf: float 
     ben_ret = pd.Series(ben_ret, name="ben_ret", index=time)  # benchmark的累计收益率
     excess_ret = pd.Series(excess_ret, name="excess_ret", index=time)
 
+    acc_ret = pd.concat([pd.Series([0], index=[acc_ret.index[0] - pd.DateOffset(days=1)]),
+                         acc_ret], axis=0)
+    ben_ret = pd.concat([pd.Series([0], index=[ben_ret.index[0] - pd.DateOffset(days=1)]),
+                         ben_ret], axis=0)
+    excess_ret = pd.concat([pd.Series([0], index=[excess_ret.index[0] - pd.DateOffset(days=1)]),
+                            excess_ret], axis=0)
+
     acc_dd = calc_drawdown(acc_ret)
     ben_dd = calc_drawdown(ben_ret)
     excess_dd = calc_drawdown(excess_ret)

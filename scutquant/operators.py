@@ -457,9 +457,9 @@ def cs_zscore(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) ->
 
 def cs_robust_zscore(data: pd.core.groupby.SeriesGroupBy | pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
-        return data.groupby(level=0).transform(lambda x: (x - x.median()) / (abs(x - x.median()).median() * 1.4826))
+        return data.groupby(level=0).transform(lambda x: (x - x.median()) / (abs(x - x.median()).median() / 1.4826))
     else:
-        res: pd.Series = data.transform(lambda x: (x - x.median()) / (abs(x - x.median()).median() * 1.4826))
+        res: pd.Series = data.transform(lambda x: (x - x.median()) / (abs(x - x.median()).median() / 1.4826))
         res.index.names = ["datetime", "instrument"]
         return res
 

@@ -41,11 +41,10 @@ def prepare(predict: pd.DataFrame, data: pd.DataFrame, price: str, volume: str, 
 
 
 class Executor:
-    def __init__(self, generator: dict, stra, acc: dict, trade_params: dict):
+    def __init__(self, stra: dict, acc: dict, trade_params: dict):
         """
-        :param generator: dict, 包括 'mode' 和其它内容, 为执行器找到合适的信号生成方式
+        :param stra: 策略
         :param acc: dict, 账户
-
         """
         if acc is None:
             acc = {}
@@ -56,8 +55,6 @@ class Executor:
             acc["position"] = {}
         if "available" not in keys:
             acc["available"] = {}
-
-        self.mode = generator['mode']
 
         self.init_cash: float = acc['cash']
         self.position: dict = acc['position']
@@ -124,32 +121,28 @@ class Executor:
         check_names()
         self.init_account(data)
         self.create_account()
-        if self.mode == "generate":
-            benchmark = data["R"].groupby(level=0).transform(lambda x: x.mean())  # 大盘收益率
-            daily_idx, daily_count = get_daily_inter(data)
-            for idx, count in zip(daily_idx, daily_count):
-                batch = slice(idx, idx + count)
-                data_batch = data.iloc[batch]
-                benchmark_batch = benchmark.iloc[batch]
-                current_day = data_batch.index.get_level_values(0)[0]
-                self.time.append(current_day)
-                order, current_price = self.s.to_signal(data_batch, position=self.user_account.position,
-                                                        cash_available=self.get_cash_available())
+        benchmark = data["R"].groupby(level=0).transform(lambda x: x.mean())  # 大盘收益率
+        daily_idx, daily_count = get_daily_inter(data)
+        for idx, count in zip(daily_idx, daily_count):
+            batch = slice(idx, idx + count)
+            data_batch = data.iloc[batch]
+            benchmark_batch = benchmark.iloc[batch]
+            current_day = data_batch.index.get_level_values(0)[0]
+            self.time.append(current_day)
+            order, current_price = self.s.to_signal(data_batch, position=self.user_account.position,
+                                                    cash_available=self.get_cash_available())
 
-                if self.s.auto_offset:
-                    order = self.user_account.adjust_order(order=order, freq=self.s.offset_freq)
-                order = self.user_account.check_order(order, current_price, risk=self.s.risk_degree)
-                # print(trade)
-                # trade = True
-                if verbose == 1:
-                    print(current_day, '\n', "buy:", '\n', order["buy"], '\n', "sell:", order["sell"], '\n')
+            order = self.user_account.check_order(order, current_price, risk=self.s.risk_degree)
 
-                self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
-                                             cost_sell=self.cost_sell, min_cost=self.min_cost)
-                self.user_account.risk_control(risk_degree=self.s.risk_degree, cost_rate=self.cost_sell,
-                                               min_cost=self.min_cost)
+            if verbose == 1:
+                print(current_day, '\n', "cash_available:", self.get_cash_available(), '\n',
+                      "num_hold:", len(strategy.check_signal(self.user_account.position)), '\n',
+                      "buy:", '\n', order["buy"], '\n', "sell:", order["sell"], '\n')
 
-                self.benchmark.value *= 1 + benchmark_batch.values[0]  # 乘上1+大盘收益率, 相当于等权指数
-                self.benchmark.val_hist.append(self.benchmark.value)
-        else:
-            raise ValueError("simulate mode is not available by far")
+            self.user_account.update_all(order=order, price=current_price, cost_buy=self.cost_buy,
+                                         cost_sell=self.cost_sell, min_cost=self.min_cost)
+            self.user_account.risk_control(risk_degree=self.s.risk_degree, cost_rate=self.cost_sell,
+                                           min_cost=self.min_cost)
+
+            self.benchmark.value *= 1 + benchmark_batch.values[0]  # 乘上1+大盘收益率, 相当于等权指数
+            self.benchmark.val_hist.append(self.benchmark.value)

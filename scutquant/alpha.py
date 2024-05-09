@@ -29,7 +29,7 @@ def market_neutralize(x: pd.Series, long_only: bool = False) -> pd.Series:
 
 def calc_factor_turnover(x: pd.Series) -> pd.Series:
     factor_neu = market_neutralize(x, long_only=False)
-    instrument_to = abs(factor_neu - ts_delay(factor_neu, 1).fillna(0))
+    instrument_to = abs(factor_neu - ts_delay(factor_neu, 1).fillna(0))  # 今日权重 - 昨日权重，在单利回测情况下代表资金变动的百分比
     return instrument_to.groupby(level=0).sum()
 
 
@@ -44,7 +44,7 @@ def get_factor_portfolio(feature: pd.Series, label: pd.Series, long_only: bool =
     X = pd.DataFrame({"feature": x_neu, "label": label})
     X.dropna(inplace=True)
     X["factor_return"] = X["feature"] * X["label"]
-    daily_return = X["factor_return"].groupby("datetime").sum()
+    daily_return = X["factor_return"].groupby(level=0).sum()
     daily_return += 1
     portfolio = daily_return.cumprod()
     portfolio.index = pd.to_datetime(portfolio.index)
@@ -81,11 +81,15 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
         result["icir"] = result["ic"].mean() / result["ic"].std()
         result["t-stat"] = result["icir"] * (len(result["ic"]) ** 0.5)
     if "return" in metrics:
-        result["return"] = get_factor_portfolio(factor, label, long_only=long_only)
+        result["return"]: pd.Series = get_factor_portfolio(factor, label, long_only=long_only)
+        result["return"] = pd.concat([pd.Series([1], index=[result["return"].index[0] - pd.DateOffset(days=1)]),
+                                      result["return"]], axis=0)
         benchmark: pd.Series = label.groupby(level=0).mean()
         benchmark.index = pd.to_datetime(benchmark.index)
         benchmark = benchmark[benchmark.index.isin(result["return"].index)]
         result["benchmark"] = (benchmark + 1).cumprod()
+        result["benchmark"] = pd.concat([pd.Series([1], index=[result["benchmark"].index[0] - pd.DateOffset(days=1)]),
+                                         result["benchmark"]], axis=0)
         result["excess_return"] = result["return"] - result["benchmark"]
         result["drawdown"] = calc_drawdown(result["return"])
         result["excess_return_drawdown"] = calc_drawdown(result["excess_return"])
@@ -102,6 +106,33 @@ def get_factor_metrics(factor: pd.Series, label: pd.Series, metrics=None, handle
     result["return"] -= 1
     result["benchmark"] -= 1
     return result
+
+
+def Brinson_Fachler_analysis(portfolio_weight: pd.Series, returns_benchmark: pd.Series, returns_portfolio=None,
+                             benchmark_weight=None):
+    """
+    单期Brinson模型的BF分解. 可以简单累加作为多期Brinson模型的分解
+    当returns_portfolio为None时，默认在benchmark成分内选股，即选择收益SR=0，超额收益完全来自配置收益AR
+    当benchmark_weight为None时，benchmark默认为成分股等权指数
+    为了正确计算中性组合的收益分解，对原式做了调整
+    """
+    if returns_portfolio is None:
+        returns_portfolio: pd.Series = returns_benchmark
+    # R_p: pd.Series = (portfolio_weight * returns_portfolio).groupby(level=0).sum()
+    if benchmark_weight is None:
+        benchmark_weight: pd.Series = returns_benchmark.groupby(level=0).transform(lambda x: 1 / x.count())
+    R_b: pd.Series = (benchmark_weight * returns_benchmark).groupby(level=0).sum()
+
+    adj_returns_portfolio = sign(portfolio_weight) * returns_portfolio
+    adj_portfolio_weight = abs(portfolio_weight)
+
+    # AR: pd.Series = ((portfolio_weight - benchmark_weight) * (returns_benchmark - R_b)).groupby(level=0).sum()
+    # SR: pd.Series = R_p - R_b - AR
+    SR: pd.Series = (benchmark_weight * (adj_returns_portfolio - returns_benchmark)).groupby(level=0).sum()
+    AR: pd.Series = ((portfolio_weight - benchmark_weight) * (returns_benchmark - R_b)).groupby(level=0).sum()
+    IR: pd.Series = ((adj_returns_portfolio - returns_benchmark) * (adj_portfolio_weight - benchmark_weight)).groupby(
+        level=0).sum()
+    return AR, SR, IR
 
 
 class Alpha:
@@ -465,7 +496,7 @@ class KBAR(Alpha):
         self.result = pd.DataFrame(dtype='float64')
 
     def call(self):
-        self.result["kmid"] = (self.data["close"] - self.data["open"]) / self.data["open"]
+        self.result["kmid"] = self.data["close"] / self.data["open"] - 1
         self.result["klen"] = (self.data["high"] - self.data["low"]) / self.data["open"]
         self.result["kmid2"] = (self.data["close"] - self.data["open"]) / (self.data["high"] - self.data["low"])
         self.result["kup"] = (self.data["high"] - bigger(self.data["open"], self.data["close"])) / self.data["open"]
@@ -580,47 +611,25 @@ class SUMN(Alpha):
                 self.result["sumn" + str(d)] = ts_sum(bigger(-diff, zeros), d) / ts_sum(abs(diff), d)
 
 
-class WQ_1(Alpha):
-    # ts_decay_linear(ts_rank(close, 20) * cs_rank(volume) / cs_rank(returns), 15)
-    def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
+class WVMA(Alpha):
+    def __init__(self, price: pd.Series, volume: pd.Series, periods: list[int] | int, normalize: str = "zscore",
                  nan_handling: str = "ffill"):
         super().__init__()
-        self.data = data
+        self.price = price
+        self.volume = volume
         self.periods = periods
         self.norm_method = normalize
         self.process_nan = nan_handling
         self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
 
     def call(self):
-        c_rank = cs_rank(ts_returns(self.data["close"], 1))
-        volume_rank = cs_rank(self.data["volume"])
-        rank_ratio = volume_rank / c_rank
+        weight: pd.Series = abs(ts_returns(self.price, 1))
+        weighted_vol: pd.Series = weight * self.volume
         if isinstance(self.periods, int):
-            self.result = ts_decay(-ts_rank(self.data["close"], self.periods) * rank_ratio, 15)
+            self.result = ts_std(weighted_vol, self.periods) / ts_mean(weighted_vol, self.periods)
         else:
             for d in self.periods:
-                self.result["wq1_" + str(d)] = ts_decay(-ts_rank(self.data["close"], d) * rank_ratio, 15)
-
-
-class WQ_2(Alpha):
-    # cs_rank(ts_corr(returns, cs_mean(returns) * ts_decay_linear(close, 15), days))
-    def __init__(self, data: pd.DataFrame, periods: list[int] | int, normalize: str = "zscore",
-                 nan_handling: str = "ffill"):
-        super().__init__()
-        self.data = data
-        self.periods = periods
-        self.norm_method = normalize
-        self.process_nan = nan_handling
-        self.result = pd.Series(dtype='float64') | pd.DataFrame(dtype='float64')
-
-    def call(self):
-        self.data["returns"] = ts_returns(self.data["close"], 1)
-        self.data["cs_mean"] = cs_mean(self.data["returns"]) * ts_decay(self.data["close"], 15)
-        if isinstance(self.periods, int):
-            self.result = cs_rank(ts_corr(self.data["returns"], self.data["cs_mean"], self.periods))
-        else:
-            for d in self.periods:
-                self.result["wq2_" + str(d)] = cs_rank(ts_corr(self.data["returns"], self.data["cs_mean"], d))
+                self.result["wvma" + str(d)] = ts_std(weighted_vol, d) / ts_mean(weighted_vol, d)
 
 
 class CustomizedAlpha(Alpha):
@@ -655,11 +664,11 @@ def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd
     :param data: 包括以下几列: open, close, high, low, volume, amount
     :param normalize: 是否进行cs zscore标准化
     :param fill: 是否向后填充缺失值
-    :param windows: 列表, 默认为[5, 10, 20, 30, 60]
+    :param windows: 列表, 默认为[0-59]
     :return:
     """
     if windows is None:
-        windows = [i for i in range(59, 0, -1)]
+        windows = [i for i in range(1, 60)]
     o_group = data["open"].groupby(level=1)
     c_group = data["close"].groupby(level=1)
     h_group = data["high"].groupby(level=1)
@@ -699,12 +708,13 @@ def qlib360(data: pd.DataFrame, normalize=False, fill=False, windows=None) -> pd
     AMOUNT.columns = ["amount" + str(w) for w in windows]
     for c in AMOUNT.columns:
         AMOUNT[c] /= price * volume
-    features = pd.concat([OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT], axis=1)
+    features = pd.concat([data[["open", "close", "high", "low", "volume", "amount"]], OPEN, CLOSE, HIGH, LOW, VOLUME,
+                          AMOUNT], axis=1)
     return features
 
 
 def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, windows=None,
-            n_jobs: int = -1) -> pd.DataFrame:
+            n_jobs: int = -1, deunit: bool = True) -> pd.DataFrame:
     if windows is None:
         windows = [5, 10, 20, 30, 60]
     o_group = data["open"].groupby(level=1)
@@ -717,7 +727,7 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     price = data["close"]
     volume = data["volume"]
 
-    vol_mask = data["volume"].transform(lambda x: x if x > 0 else np.nan)
+    vol_mask = volume.transform(lambda x: x if x > 0 else np.nan)
 
     tasks = [(KBAR(data).get_factor_value, (normalize, fill)),
              (BETA(data["open"], data["close"], windows).get_factor_value, (normalize, fill)),
@@ -725,10 +735,11 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
              (RSV(data, windows).get_factor_value, (normalize, fill)),
              (CORR(data["close"], log(vol_mask), windows).get_factor_value, (normalize, fill)),
              (CORD(data["close"], data["volume"], windows).get_factor_value, (normalize, fill)),
-             (CNTP(price, windows).get_factor_value, (normalize, fill)),
-             (CNTN(price, windows).get_factor_value, (normalize, fill)),
-             (SUMP(price, windows).get_factor_value, (normalize, fill)),
-             (SUMN(price, windows).get_factor_value, (normalize, fill))]
+             (CNTP(data["close"], windows).get_factor_value, (normalize, fill)),
+             (CNTN(data["close"], windows).get_factor_value, (normalize, fill)),
+             (SUMP(data["close"], windows).get_factor_value, (normalize, fill)),
+             (SUMN(data["close"], windows).get_factor_value, (normalize, fill)),
+             (WVMA(data["close"], data["volume"], windows).get_factor_value, (normalize, fill))]
 
     parallel_result = Parallel(n_jobs=n_jobs)(delayed(func)(*args) for func, args in tasks)
     parallel_df = pd.concat(parallel_result, axis=1)
@@ -741,43 +752,43 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
              (QTLD(c_group, windows).get_factor_value, (normalize, fill))]
     parallel_result2 = Parallel(n_jobs=n_jobs)(delayed(func)(*args) for func, args in task2)
     parallel_df2 = pd.concat(parallel_result2, axis=1)
-    for c in parallel_df2.columns:
-        parallel_df2[c] /= price
 
-    OPEN = DELAY(o_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    OPEN.columns = ["open" + str(w) for w in range(1, 6)]
-    for c in OPEN.columns:
-        OPEN[c] /= price
+    if deunit:
+        for c in parallel_df2.columns:
+            parallel_df2[c] /= price
 
-    CLOSE = DELAY(c_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    CLOSE.columns = ["close" + str(w) for w in range(1, 6)]
-    for c in CLOSE.columns:
-        CLOSE[c] /= price
+    OPEN = DELAY(o_group, periods=[1, 2, 3, 4]).get_factor_value(normalize=normalize, handle_nan=fill)
+    OPEN.columns = ["open" + str(w) for w in range(1, 5)]
 
-    HIGH = DELAY(h_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    HIGH.columns = ["high" + str(w) for w in range(1, 6)]
-    for c in HIGH.columns:
-        HIGH[c] /= price
+    CLOSE = DELAY(c_group, periods=[1, 2, 3, 4]).get_factor_value(normalize=normalize, handle_nan=fill)
+    CLOSE.columns = ["close" + str(w) for w in range(1, 5)]
 
-    LOW = DELAY(l_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    LOW.columns = ["low" + str(w) for w in range(1, 6)]
-    for c in LOW.columns:
-        LOW[c] /= price
+    HIGH = DELAY(h_group, periods=[1, 2, 3, 4]).get_factor_value(normalize=normalize, handle_nan=fill)
+    HIGH.columns = ["high" + str(w) for w in range(1, 5)]
 
-    VOLUME = DELAY(v_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    VOLUME.columns = ["volume" + str(w) for w in range(1, 6)]
-    for c in VOLUME.columns:
-        VOLUME[c] /= volume
+    LOW = DELAY(l_group, periods=[1, 2, 3, 4]).get_factor_value(normalize=normalize, handle_nan=fill)
+    LOW.columns = ["low" + str(w) for w in range(1, 5)]
 
-    AMOUNT = DELAY(a_group, periods=[1, 2, 3, 4, 5]).get_factor_value(normalize=normalize, handle_nan=fill)
-    AMOUNT.columns = ["amount" + str(w) for w in range(1, 6)]
-    for c in AMOUNT.columns:
-        AMOUNT[c] /= price * volume
+    VOLUME = DELAY(v_group, periods=[1, 2, 3, 4]).get_factor_value(normalize=normalize, handle_nan=fill)
+    VOLUME.columns = ["volume" + str(w) for w in range(1, 5)]
 
-    delta = DELTA(data["close"], periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
-    delta.columns = ["roc" + str(w) for w in windows]
-    for c in delta.columns:
-        delta[c] /= price
+    AMOUNT = DELAY(a_group, periods=[1, 2, 3, 4]).get_factor_value(normalize=normalize, handle_nan=fill)
+    AMOUNT.columns = ["amount" + str(w) for w in range(1, 5)]
+
+    basedata_price = pd.concat([OPEN, CLOSE, HIGH, LOW], axis=1)
+
+    roc = DELTA(data["close"], periods=windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    roc.columns = ["roc" + str(w) for w in windows]
+
+    if deunit:
+        for c in basedata_price.columns:
+            basedata_price[c] /= price
+        for c in VOLUME.columns:
+            VOLUME[c] /= volume
+        for c in AMOUNT.columns:
+            AMOUNT[c] /= price * vol_mask
+        for c in roc.columns:
+            roc[c] /= price
 
     r2 = REGRESSION(cs_rank(data["volume"]), cs_rank(data["close"]), windows, rettype=4).get_factor_value(
         normalize=normalize, handle_nan=fill)
@@ -786,18 +797,24 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     resi = REGRESSION(cs_rank(data["volume"]), cs_rank(data["close"]), windows, rettype=0).get_factor_value(
         normalize=normalize, handle_nan=fill)
     resi.columns = ["resi" + str(w) for w in windows]
-    for c in resi.columns:
-        resi[c] /= price
+
+    if deunit:
+        for c in resi.columns:
+            resi[c] /= price
 
     vma = MA(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vma.columns = ["vma" + str(w) for w in windows]
-    for c in vma.columns:
-        vma[c] /= volume
+
+    if deunit:
+        for c in vma.columns:
+            vma[c] /= volume
 
     vstd = STD(v_group, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vstd.columns = ["vstd" + str(w) for w in windows]
-    for c in vstd.columns:
-        vstd[c] /= volume
+
+    if deunit:
+        for c in vstd.columns:
+            vstd[c] /= volume
 
     vsump = SUMP(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsump.columns = ["vsump" + str(w) for w in windows]
@@ -805,6 +822,6 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     vsumn = SUMN(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsumn.columns = ["vsumn" + str(w) for w in windows]
 
-    features = pd.concat([OPEN, CLOSE, HIGH, LOW, VOLUME, AMOUNT, parallel_df, delta, r2,
-                          resi, parallel_df2, vma, vstd, vsump, vsumn], axis=1)
+    features = pd.concat([data[["open", "close", "high", "low", "volume", "amount"]], basedata_price, VOLUME,
+                          AMOUNT, parallel_df, roc, r2, resi, parallel_df2, vma, vstd, vsump, vsumn], axis=1)
     return features
