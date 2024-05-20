@@ -35,7 +35,7 @@ def from_pandas_to_list(x, for_cnn: bool = False):
             batch = slice(index, index + count)
             data_slice = x.iloc[batch]
             if for_cnn:
-                value = data_slice.values.reshape(-1, data_slice.shape[1], 1)  # instrument * feat * 1
+                value = data_slice.values.reshape(-1, 1, data_slice.shape[1])  # instrument * 1 * feat
                 # print(value.shape)
             else:
                 value = data_slice.values  # instrument * feat
@@ -62,6 +62,14 @@ def from_pandas_to_rnn(x: DataFrame | Series, fillna: bool = False):
     x_3d = x_unstack.values.reshape(x_unstack.shape[0], n_feat, -1)  # inst * feat * date
     tensor = torch.from_numpy(x_3d).to(torch.float32).permute(0, 2, 1)  # Tensor with shape inst * date * feat
     return tensor
+
+
+def calc_kernel_size(f_in: int, f_out: int, stride: int = 2) -> int:
+    # f_out = (f_in - kernel_size) / stride + 1
+    # f_in - kernel_size = (f_out - 1) * stride
+    # kernel_size = f_in - (f_out - 1) * stride
+    assert f_out > 1
+    return int(f_in - (f_out - 1) * stride)
 
 
 def transform_data(x_train, y_train, x_valid, y_valid, z_train=None, z_valid=None, for_cnn: bool = False,
@@ -378,21 +386,26 @@ class CNN(Model):
 
         self.for_cnn = True
 
-        self.input_conv = torch.nn.Conv1d(self.input_channels, self.hidden_channels, kernel_size=1)
-        self.hidden_conv = torch.nn.Conv1d(self.hidden_channels, self.output_channels, kernel_size=1)
+        # [N, 1, F_in] -> [N, filters, F_out]
+        self.input_conv = torch.nn.Conv1d(1, 16,
+                                          kernel_size=calc_kernel_size(self.input_channels, self.hidden_channels, 3),
+                                          stride=3)
+        self.hidden_conv = torch.nn.Conv1d(16, 32,
+                                           kernel_size=calc_kernel_size(self.hidden_channels, self.output_channels),
+                                           stride=2)
 
         self.bn = torch.nn.BatchNorm1d(self.hidden_channels)
         self.bn_1 = torch.nn.BatchNorm1d(self.output_channels)
         self.flatten = torch.nn.Flatten()
 
-        self.out_layer = torch.nn.Linear(self.output_channels, self.output_shape)
+        self.out_layer = torch.nn.Linear(self.output_channels * 32, self.output_shape)
 
     def forward(self, x, **kwargs):
-        x = f.relu(self.input_conv(x))
-        x = self.bn(x)
+        x = f.hardswish(self.input_conv(x))
+        x = self.bn(x.permute(0, 2, 1)).permute(0, 2, 1)
 
-        x = f.relu(self.hidden_conv(x))
-        x = self.bn_1(x)
+        x = f.hardswish(self.hidden_conv(x))
+        x = self.bn_1(x.permute(0, 2, 1)).permute(0, 2, 1)
         x = self.flatten(x)
 
         x = self.out_layer(x)

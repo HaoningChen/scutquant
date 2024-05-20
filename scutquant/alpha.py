@@ -725,21 +725,19 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
     a_group = data["amount"].groupby(level=1)
 
     price = data["close"]
-    volume = data["volume"]
-
-    vol_mask = volume.transform(lambda x: x if x > 0 else np.nan)
+    volume = data["volume"].transform(lambda x: x if x > 0 else np.nan)
 
     tasks = [(KBAR(data).get_factor_value, (normalize, fill)),
              (BETA(data["open"], data["close"], windows).get_factor_value, (normalize, fill)),
              (RANK(c_group, windows).get_factor_value, (normalize, fill)),
              (RSV(data, windows).get_factor_value, (normalize, fill)),
-             (CORR(data["close"], log(vol_mask), windows).get_factor_value, (normalize, fill)),
-             (CORD(data["close"], data["volume"], windows).get_factor_value, (normalize, fill)),
+             (CORR(data["close"], log(volume), windows).get_factor_value, (normalize, fill)),
+             (CORD(data["close"], volume, windows).get_factor_value, (normalize, fill)),
              (CNTP(data["close"], windows).get_factor_value, (normalize, fill)),
              (CNTN(data["close"], windows).get_factor_value, (normalize, fill)),
              (SUMP(data["close"], windows).get_factor_value, (normalize, fill)),
              (SUMN(data["close"], windows).get_factor_value, (normalize, fill)),
-             (WVMA(data["close"], data["volume"], windows).get_factor_value, (normalize, fill))]
+             (WVMA(data["close"], volume, windows).get_factor_value, (normalize, fill))]
 
     parallel_result = Parallel(n_jobs=n_jobs)(delayed(func)(*args) for func, args in tasks)
     parallel_df = pd.concat(parallel_result, axis=1)
@@ -786,15 +784,15 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
         for c in VOLUME.columns:
             VOLUME[c] /= volume
         for c in AMOUNT.columns:
-            AMOUNT[c] /= price * vol_mask
+            AMOUNT[c] /= price * volume
         for c in roc.columns:
             roc[c] /= price
 
-    r2 = REGRESSION(cs_rank(data["volume"]), cs_rank(data["close"]), windows, rettype=4).get_factor_value(
+    r2 = REGRESSION(ts_returns(price, 1), ts_delay(ts_returns(price, 1), 1), windows, rettype=4).get_factor_value(
         normalize=normalize, handle_nan=fill)
     r2.columns = ["rsqr" + str(w) for w in windows]
 
-    resi = REGRESSION(cs_rank(data["volume"]), cs_rank(data["close"]), windows, rettype=0).get_factor_value(
+    resi = REGRESSION(ts_returns(price, 1), ts_delay(ts_returns(price, 1), 1), windows, rettype=0).get_factor_value(
         normalize=normalize, handle_nan=fill)
     resi.columns = ["resi" + str(w) for w in windows]
 
@@ -816,10 +814,10 @@ def qlib158(data: pd.DataFrame, normalize: bool = False, fill: bool = False, win
         for c in vstd.columns:
             vstd[c] /= volume
 
-    vsump = SUMP(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    vsump = SUMP(volume, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsump.columns = ["vsump" + str(w) for w in windows]
 
-    vsumn = SUMN(data["volume"], windows).get_factor_value(normalize=normalize, handle_nan=fill)
+    vsumn = SUMN(volume, windows).get_factor_value(normalize=normalize, handle_nan=fill)
     vsumn.columns = ["vsumn" + str(w) for w in windows]
 
     features = pd.concat([data[["open", "close", "high", "low", "volume", "amount"]], basedata_price, VOLUME,

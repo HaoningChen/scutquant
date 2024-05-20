@@ -13,7 +13,7 @@ def raw_prediction_to_signal(pred: pd.Series, total_cash: float, long_only: bool
     构造组合并乘可投资资金, 得到每只股票分配的资金
     """
     if len(pred) > 1:
-        if long_only:
+        if not long_only:
             pred -= pred.groupby(level=0).mean()
         pred_ = pred.copy()
         abs_sum = abs(pred_).groupby(level=0).sum()
@@ -65,10 +65,6 @@ class BaseStrategy:
             kwargs = {}
         if "k" not in kwargs.keys():
             kwargs["k"] = 0.2
-        if "auto_offset" not in kwargs.keys():
-            kwargs["auto_offset"] = False
-        if "offset_freq" not in kwargs.keys():
-            kwargs["offset_freq"] = 1
         if "unit" not in kwargs.keys():
             kwargs["unit"] = "lot"
         if "risk_degree" not in kwargs.keys():
@@ -79,8 +75,6 @@ class BaseStrategy:
             kwargs["long_only"] = False
 
         self.k = kwargs["k"]
-        self.auto_offset = kwargs["auto_offset"]
-        self.offset_freq = kwargs["offset_freq"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
         self.max_volume = kwargs["max_volume"]
@@ -117,6 +111,7 @@ class QlibTopKStrategy(BaseStrategy):
         if "equal_weight" not in kwargs.keys():
             kwargs["equal_weight"] = True
 
+        self.n_start = kwargs["n_start"] if "n_start" in kwargs.keys() else None
         self.k = kwargs["k"]
         self.unit = kwargs["unit"]
         self.risk_degree = kwargs["risk_degree"]
@@ -129,6 +124,8 @@ class QlibTopKStrategy(BaseStrategy):
         valid_position = check_signal(position)
         price = get_price(data, price="price")
         if len(valid_position) == 0:  # 如果当前没有仓位, 买入valid broad top k组
+            if self.n_start is not None:
+                n_k = self.n_start
             data_buy = data.copy().sort_values("predict", ascending=False).head(n_k)  # 买入的股票
             sell_dict = {}
         else:
